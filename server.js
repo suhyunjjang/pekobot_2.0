@@ -292,6 +292,7 @@ function processAndEmitFullChartData(socketEmitter) {
     // --- 매매 전략 평가 --- (하이킨아시 차트 기준)
     let strategySignal = { signal: 'NO_SIGNAL', conditions: {}, timestamp: 0, position: currentPosition };
     const latestHaCandle = heikinAshiCandles[heikinAshiCandles.length - 1];
+    const latestOriginalCandle = currentCandles.length > 0 ? currentCandles[currentCandles.length - 1] : {}; // 원본 캔들에서 심볼 가져오기 위함
     const latestHaEMA = heikinAshiEMA.length > 0 ? heikinAshiEMA[heikinAshiEMA.length - 1] : null;
     const latestHaStochKLine = heikinAshiStochRSI.kLine;
 
@@ -312,10 +313,41 @@ function processAndEmitFullChartData(socketEmitter) {
         if (currentPosition === 'NONE') { // 현재 포지션이 없을 때만 진입 신호 확인
             if (trendConditionLong && directionConditionLong && oscillatorConditionLong) {
                 strategySignal.signal = 'LONG_ENTRY';
-                console.log(`매수 진입 신호 발생: Time=${new Date(latestHaCandle.time * 1000).toLocaleString()}`);
+                const signalTime = new Date(latestHaCandle.time * 1000).toLocaleString('ko-KR');
+                const currentSymbol = latestOriginalCandle.symbol || 'BTCUSDT'; // recentCandles에서 전달된 심볼 사용
+                console.log(`매수 진입 신호 발생: Time=${signalTime}, Symbol=${currentSymbol}`);
+                
+                const tradeSignalData = {
+                    symbol: currentSymbol,
+                    side: 'BUY',
+                    type: 'MARKET', // 또는 'LIMIT', 주문 유형
+                    // quantity: '0.001', // 예시: 주문 수량 (별도 로직으로 계산 필요)
+                    price: latestHaCandle.close, // 참고용 현재 HA 종가 (실제 주문은 시장가 또는 다른 가격 사용 가능)
+                    originalPrice: latestOriginalCandle.close, // 참고용 원본 캔들 종가
+                    timestamp: latestHaCandle.time,
+                    signalType: strategySignal.signal
+                };
+                io.emit('trade_signal', tradeSignalData);
+                io.emit('server-log', {type: 'success', source: 'StrategyLogic', message: `BUY Signal Emitted`, details: tradeSignalData});
+
             } else if (trendConditionShort && directionConditionShort && oscillatorConditionShort) {
                 strategySignal.signal = 'SHORT_ENTRY';
-                console.log(`매도 진입 신호 발생: Time=${new Date(latestHaCandle.time * 1000).toLocaleString()}`);
+                const signalTime = new Date(latestHaCandle.time * 1000).toLocaleString('ko-KR');
+                const currentSymbol = latestOriginalCandle.symbol || 'BTCUSDT'; // recentCandles에서 전달된 심볼 사용
+                console.log(`매도 진입 신호 발생: Time=${signalTime}, Symbol=${currentSymbol}`);
+                
+                const tradeSignalData = {
+                    symbol: currentSymbol,
+                    side: 'SELL',
+                    type: 'MARKET',
+                    // quantity: '0.001', 
+                    price: latestHaCandle.close, // 참고용 현재 HA 종가
+                    originalPrice: latestOriginalCandle.close, // 참고용 원본 캔들 종가
+                    timestamp: latestHaCandle.time,
+                    signalType: strategySignal.signal
+                };
+                io.emit('trade_signal', tradeSignalData);
+                io.emit('server-log', {type: 'success', source: 'StrategyLogic', message: `SELL Signal Emitted`, details: tradeSignalData});
             }
         }
         // (참고) 포지션 청산 및 상태 변경 로직은 여기에 추가될 수 있음
@@ -360,7 +392,8 @@ binanceWs.on('message', (data) => {
         high: parseFloat(kline.h),
         low: parseFloat(kline.l),
         close: parseFloat(kline.c),
-        volume: parseFloat(kline.v)
+        volume: parseFloat(kline.v),
+        symbol: kline.s // 심볼 정보 추가
       };
 
       // recentCandles 배열 업데이트
