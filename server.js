@@ -21,6 +21,8 @@ const STOCH_PERIOD = 14;
 const K_PERIOD = 3;
 const D_PERIOD = 3;
 const EMA_PERIOD = 200;
+let currentPosition = 'NONE'; // 현재 포지션 상태 (NONE, LONG, SHORT)
+let lastSignalTime = 0; // 마지막 신호 발생 시간 (중복 신호 방지용, 선택적)
 
 // 과거 캔들 데이터 API 엔드포인트
 app.get('/api/historical-klines', async (req, res) => {
@@ -104,11 +106,26 @@ io.on('connection', (socket) => {
 
 // 모든 클라이언트에게 전체 계산된 차트 데이터를 전송하는 함수
 function processAndEmitFullChartData(socketEmitter) {
-    if (recentCandles.length === 0) return;
+    if (recentCandles.length < 2) { // 최소 2개 캔들이 있어야 이전 값 비교 가능
+        // 초기 데이터가 부족할 경우, 기본 차트 데이터만 전송하거나 빈 신호 전송
+        const initialData = {
+            regularCandles: [...recentCandles],
+            // ... (다른 지표들도 최소한으로 계산하거나 빈 값으로 채움) ...
+            heikinAshiCandles: indicators.calculateHeikinAshi([...recentCandles]),
+            regularEMA200: indicators.calculateEMA([...recentCandles], EMA_PERIOD),
+            heikinAshiEMA200: indicators.calculateEMA(indicators.calculateHeikinAshi([...recentCandles]), EMA_PERIOD),
+            // StochRSI 등도 필요에 따라 최소 계산 또는 빈 값
+            regularStochRSI: { kLine: [], dLine: [] }, 
+            heikinAshiStochRSI: { kLine: [], dLine: [] },
+            strategySignal: { signal: 'DATA_INSUFFICIENT', conditions: {}, timestamp: 0, position: currentPosition }
+        };
+        socketEmitter.emit('full_chart_update', initialData);
+        return;
+    }
 
-    // 현재 recentCandles를 복사하여 사용 (원본 변경 방지)
-    const currentCandles = [...recentCandles];
+    const currentCandles = [...recentCandles]; // 현재 캔들 데이터 복사
 
+    // 지표 계산 (이전과 동일)
     const heikinAshiCandles = indicators.calculateHeikinAshi(currentCandles);
     const regularEMA = indicators.calculateEMA(currentCandles, EMA_PERIOD);
     const heikinAshiEMA = indicators.calculateEMA(heikinAshiCandles, EMA_PERIOD);
@@ -117,13 +134,56 @@ function processAndEmitFullChartData(socketEmitter) {
     const heikinAshiRSI = indicators.calculateRSI(heikinAshiCandles, RSI_PERIOD);
     const heikinAshiStochRSI = indicators.calculateStochasticRSI(heikinAshiRSI, STOCH_PERIOD, K_PERIOD, D_PERIOD);
 
+    // --- 매매 전략 평가 --- (하이킨아시 차트 기준)
+    let strategySignal = { signal: 'NO_SIGNAL', conditions: {}, timestamp: 0, position: currentPosition };
+    const latestHaCandle = heikinAshiCandles[heikinAshiCandles.length - 1];
+    const latestHaEMA = heikinAshiEMA.length > 0 ? heikinAshiEMA[heikinAshiEMA.length - 1] : null;
+    const latestHaStochKLine = heikinAshiStochRSI.kLine;
+
+    if (latestHaCandle && latestHaEMA && latestHaStochKLine.length >= 2) {
+        const currentHaStochK = latestHaStochKLine[latestHaStochKLine.length - 1].value;
+        const prevHaStochK = latestHaStochKLine[latestHaStochKLine.length - 2].value;
+        strategySignal.timestamp = latestHaCandle.time;
+
+        // 조건 평가
+        const trendConditionLong = latestHaCandle.close > latestHaEMA.value;
+        const directionConditionLong = latestHaCandle.close > latestHaCandle.open;
+        const oscillatorConditionLong = prevHaStochK <= 20 && currentHaStochK > 20;
+
+        const trendConditionShort = latestHaCandle.close < latestHaEMA.value;
+        const directionConditionShort = latestHaCandle.close < latestHaCandle.open;
+        const oscillatorConditionShort = prevHaStochK >= 80 && currentHaStochK < 80;
+
+        if (currentPosition === 'NONE') { // 현재 포지션이 없을 때만 진입 신호 확인
+            if (trendConditionLong && directionConditionLong && oscillatorConditionLong) {
+                strategySignal.signal = 'LONG_ENTRY';
+                // currentPosition = 'LONG'; // 실제 진입은 다음 캔들 시가이므로, 여기서 바로 상태 변경 안 함
+                                           // 혹은, 신호 발생 시 바로 포지션 예약 상태로 변경 가능
+                console.log(`매수 진입 신호 발생: Time=${new Date(latestHaCandle.time * 1000).toLocaleString()}`);
+            } else if (trendConditionShort && directionConditionShort && oscillatorConditionShort) {
+                strategySignal.signal = 'SHORT_ENTRY';
+                // currentPosition = 'SHORT';
+                console.log(`매도 진입 신호 발생: Time=${new Date(latestHaCandle.time * 1000).toLocaleString()}`);
+            }
+        }
+        // (참고) 포지션 청산 및 상태 변경 로직은 여기에 추가될 수 있음
+        // 예: if (currentPosition === 'LONG' && 반대신호_또는_청산조건) { currentPosition = 'NONE'; strategySignal.signal = 'LONG_EXIT'; }
+
+        strategySignal.conditions = {
+            long: { trend: trendConditionLong, direction: directionConditionLong, oscillator: oscillatorConditionLong },
+            short: { trend: trendConditionShort, direction: directionConditionShort, oscillator: oscillatorConditionShort }
+        };
+    }
+    // --- 매매 전략 평가 끝 ---
+
     const allCalculatedData = {
         regularCandles: currentCandles,
         regularEMA200: regularEMA,
         regularStochRSI: regularStochRSI,
         heikinAshiCandles: heikinAshiCandles,
         heikinAshiEMA200: heikinAshiEMA,
-        heikinAshiStochRSI: heikinAshiStochRSI
+        heikinAshiStochRSI: heikinAshiStochRSI,
+        strategySignal: strategySignal // 전략 신호 객체 추가
     };
     socketEmitter.emit('full_chart_update', allCalculatedData);
 }
