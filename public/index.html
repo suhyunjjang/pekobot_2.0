@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>바이낸스 비트코인 선물 차트</title>
+    <title>PEKO</title>
     <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <style>
@@ -44,7 +44,7 @@
     </style>
 </head>
 <body>
-    <h1>바이낸스 비트코인 선물 실시간 차트</h1>
+    <h1>PEKO</h1>
     <div id="chart-container"></div>
     <div class="price-info">
         <p>현재가: <span id="current-price" class="price-value">로딩 중...</span></p>
@@ -84,8 +84,15 @@
             },
         });
         
-        // 캔들스틱 시리즈 생성
-        const candleSeries = chart.addCandlestickSeries({
+        // 디버깅 로그 추가
+        console.log('LightweightCharts object:', LightweightCharts);
+        console.log('Chart object:', chart);
+        console.log('Is addSeries a function?', typeof chart.addSeries);
+        // console.log('SeriesType Candlestick:', LightweightCharts.SeriesType ? LightweightCharts.SeriesType.Candlestick : 'SeriesType not found'); // 기존 로그 주석 처리
+        console.log('LightweightCharts.CandlestickSeries object:', LightweightCharts.CandlestickSeries);
+
+        // 캔들스틱 시리즈 생성 (API 수정)
+        const candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
             upColor: '#26a69a',
             downColor: '#ef5350',
             borderDownColor: '#ef5350',
@@ -100,6 +107,35 @@
         // 현재가 표시 요소
         const currentPriceElement = document.getElementById('current-price');
         
+        // 과거 데이터 로드 함수
+        async function fetchHistoricalData() {
+          try {
+            currentPriceElement.textContent = '과거 데이터 로딩 중...';
+            const response = await fetch('/api/historical-klines');
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const historicalData = await response.json();
+            
+            // 바이낸스 API는 오래된 순 -> 최신 순으로 데이터를 제공하므로 그대로 사용
+            // 혹시 최신순 -> 오래된 순으로 받고 싶다면 historicalData.reverse() 필요
+            candleData = historicalData;
+            candleSeries.setData(candleData);
+            
+            // 가장 최근 데이터로 현재가 업데이트 시도 (선택적)
+            if (candleData.length > 0) {
+              const lastCandle = candleData[candleData.length - 1];
+              currentPriceElement.textContent = parseFloat(lastCandle.close).toFixed(2) + ' USDT';
+            } else {
+              currentPriceElement.textContent = '데이터 없음';
+            }
+
+          } catch (error) {
+            console.error('과거 데이터 로드 오류:', error);
+            currentPriceElement.textContent = '과거 데이터 로드 실패';
+          }
+        }
+
         // 소켓 이벤트 리스너
         socket.on('kline', (data) => {
             const time = new Date(data.time).getTime() / 1000;
@@ -131,6 +167,9 @@
             candleSeries.setData(candleData);
         });
         
+        // 초기 과거 데이터 로드 실행
+        fetchHistoricalData();
+
         // 윈도우 리사이즈 시 차트 크기 조정
         window.addEventListener('resize', () => {
             chart.applyOptions({
