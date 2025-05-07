@@ -46,7 +46,7 @@
             border-radius: 8px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
             padding: 15px;
-            margin-bottom: 20px; 
+            margin-bottom: 20px;
             border: 1px solid var(--border);
         }
         #chart-container, #ha-chart-container {
@@ -136,6 +136,170 @@
             list-style: none;
             padding-left: 0;
         }
+
+        /* 거래 내역 스타일 추가 */
+        .trade-history h4 { /* .info-card h4 공통 스타일 사용 */
+            margin-bottom: 10px;
+        }
+        .trade-history-controls {
+            display: flex;
+            flex-wrap: wrap; /* 작은 화면에서 줄바꿈 허용 */
+            gap: 10px;
+            margin-bottom: 10px;
+            align-items: center;
+        }
+        .trade-history-controls label {
+            font-size: 0.85em;
+            margin-right: 5px;
+        }
+        .trade-history-controls input {
+            padding: 6px;
+            border: 1px solid var(--border);
+            background-color: hsl(206 48% 12%); /* 입력 필드 배경 */
+            color: var(--foreground);
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+        .trade-history-controls input[type="text"] {
+            width: 100px; 
+        }
+        .trade-history-controls input[type="number"] {
+            width: 60px; 
+        }
+        .trade-history-controls button {
+            padding: 6px 12px;
+            background-color: var(--primary);
+            color: var(--primary-foreground);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85em;
+            transition: background-color 0.2s ease;
+        }
+        .trade-history-controls button:hover {
+            background-color: hsl(145 44% 61%); /* primary hover */
+        }
+
+        .table-container {
+            max-height: 220px; 
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+
+        #trade-history-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8em;
+        }
+        #trade-history-table th, #trade-history-table td {
+            border-bottom: 1px solid var(--border); /* 행 구분선만 사용 */
+            padding: 8px 6px; /* 패딩 조정 */
+            text-align: left;
+            white-space: nowrap; /* 내용이 길어도 줄바꿈 방지 */
+        }
+        #trade-history-table th {
+            background-color: hsl(206 40% 20%); 
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        #trade-history-table td {
+            border-left: 1px solid var(--border); /* 세로 구분선 추가 */
+        }
+        #trade-history-table td:first-child {
+            border-left: none; /* 첫 번째 셀은 왼쪽 선 없음 */
+        }
+        #trade-history-table tbody tr:nth-child(even) {
+            background-color: hsl(206 48% 12%); 
+        }
+        #trade-history-body td.side-buy {
+            color: hsl(145 44% 51%); /* 기존 --primary 와 동일하게 */
+            font-weight: bold;
+        }
+        #trade-history-body td.side-sell {
+            color: hsl(0 72% 57%); /* 기존 --chart-destructive 와 동일하게 */
+            font-weight: bold;
+        }
+        #trade-history-body td.pnl-profit {
+            color: hsl(145 44% 51%);
+        }
+        #trade-history-body td.pnl-loss {
+            color: hsl(0 72% 57%);
+        }
+        #trade-history-status {
+            font-size: 0.85em;
+            text-align: center;
+            padding: 5px;
+            color: var(--muted-foreground);
+        }
+
+        /* 거래 통계 스타일 삭제 시작 */
+        /*
+        .trade-stats h4 { 
+            margin-bottom: 10px;
+        }
+        .trade-stats p {
+            margin: 6px 0; 
+            font-size: 0.85em; 
+            display: flex; 
+            justify-content: space-between; 
+        }
+        .trade-stats p span {
+            font-weight: bold;
+        }
+        */
+        /* 거래 통계 스타일 삭제 끝 */
+
+        /* 서버 로그 컨테이너 스타일 */
+        .server-log-container {
+            margin-top: 20px;
+            /* .info-card 스타일이 이미 적용됨 (HTML에서 클래스 추가 가정) */
+        }
+        .server-log-container h4 {
+            margin-bottom: 10px;
+            text-align: left; 
+        }
+        .log-output-area {
+            max-height: 200px; 
+            overflow-y: auto; 
+            background-color: hsl(206 48% 10%); 
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            font-family: 'Consolas', 'Monaco', monospace; 
+            font-size: 0.8em;
+            line-height: 1.6;
+            color: var(--foreground); /* 기본 텍스트 색상 */
+        }
+        .log-message {
+            margin: 0 0 5px 0;
+            padding: 2px 5px;
+            border-radius: 3px;
+            white-space: pre-wrap; 
+            word-break: break-all; 
+        }
+        .log-timestamp { color: #7f8c8d; margin-right: 8px; }
+        .log-source { color: #8e44ad; font-weight: bold; margin-right: 5px; }
+        .log-info { color: #bdc3c7; } 
+        .log-success { background-color: hsla(145, 63%, 42%, 0.15); color: #2ecc71; } 
+        .log-warn { background-color: hsla(44, 100%, 78%, 0.15); color: #f39c12; } 
+        .log-error { background-color: hsla(0, 72%, 57%, 0.15); color: #e74c3c; font-weight: bold; } 
+        .log-debug { color: #95a5a6; } 
+        .log-control-button {
+            margin-top: 10px;
+            padding: 6px 12px;
+            background-color: var(--secondary);
+            color: var(--secondary-foreground);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85em;
+        }
+        .log-control-button:hover {
+            background-color: hsl(210 20% 35%);
+        }
     </style>
 </head>
 <body>
@@ -182,6 +346,45 @@
                 <li>&nbsp;&nbsp;StochRSI (80 하향돌파): <span id="ha-cond-short-oscillator">-</span></li>
             </ul>
         </div>
+        <div class="trade-history info-card">
+            <h4>최근 거래 내역</h4>
+            <div class="trade-history-controls">
+                <label for="trade-symbol">심볼:</label>
+                <input type="text" id="trade-symbol" value="BTCUSDT">
+                <label for="trade-limit">개수:</label>
+                <input type="number" id="trade-limit" value="15" min="1" max="1000">
+                <button id="fetch-trades-btn">조회</button>
+            </div>
+            <div class="table-container">
+                <table id="trade-history-table">
+                    <thead>
+                        <tr>
+                            <th>시간</th>
+                            <th>심볼</th>
+                            <th>종류</th>
+                            <th>가격</th>
+                            <th>수량</th>
+                            <th>거래금액</th>
+                            <th>수수료</th>
+                            <th>실현손익</th>
+                        </tr>
+                    </thead>
+                    <tbody id="trade-history-body">
+                        <!-- 거래 내역이 여기에 동적으로 추가됩니다 -->
+                    </tbody>
+                </table>
+            </div>
+            <p id="trade-history-status">거래 내역을 조회해주세요.</p>
+        </div>
+    </div>
+
+    <!-- 서버 로그 표시 영역 추가 -->
+    <div class="server-log-container info-card"> 
+        <h4>서버 로그</h4>
+        <div id="server-log-output" class="log-output-area">
+            <p class="log-message log-info"><span class="log-timestamp">[_ _:_ _:_ _]</span> 로그 대기 중...</p>
+        </div>
+        <button id="clear-server-log-btn" class="log-control-button">로그 지우기</button>
     </div>
 
     <script>
@@ -209,7 +412,95 @@
         const balanceUsdtEl = document.getElementById('balance-usdt');
         const balanceTotalUsdtEl = document.getElementById('balance-total-usdt');
 
+        // 거래 내역 DOM 요소
+        const tradeHistoryBodyEl = document.getElementById('trade-history-body');
+        const tradeHistoryStatusEl = document.getElementById('trade-history-status');
+        const fetchTradesBtn = document.getElementById('fetch-trades-btn');
+        const tradeSymbolInput = document.getElementById('trade-symbol');
+        const tradeLimitInput = document.getElementById('trade-limit');
+
+        // 서버 로그 DOM 요소
+        const serverLogOutputEl = document.getElementById('server-log-output');
+        const clearServerLogBtn = document.getElementById('clear-server-log-btn');
+        const MAX_LOG_LINES = 100; // 화면에 표시할 최대 로그 라인 수
+
         let isChartReady = false;
+
+        // "로그 대기 중..." 메시지 초기화 로직 수정
+        const initialLogMessage = serverLogOutputEl ? serverLogOutputEl.querySelector('p.log-info') : null;
+        if (initialLogMessage && initialLogMessage.textContent.includes('로그 대기 중...')) {
+            serverLogOutputEl.innerHTML = '';
+        }
+
+        socket.on('server-log', (logData) => {
+            if (!serverLogOutputEl) return;
+
+            const { type, message, source, details } = logData;
+            const timestamp = new Date().toLocaleTimeString('ko-KR', { hour12: false });
+
+            const logEntry = document.createElement('div'); // 각 로그를 div로 감싸서 details와 함께 묶음
+            logEntry.classList.add('log-message-entry'); // 전체 로그 항목을 위한 클래스 (필요시)
+
+            const messageLine = document.createElement('p');
+            messageLine.classList.add('log-message', `log-${type || 'info'}`);
+
+            const timeSpan = document.createElement('span');
+            timeSpan.classList.add('log-timestamp');
+            timeSpan.textContent = `[${timestamp}]`;
+            messageLine.appendChild(timeSpan);
+
+            if (source) {
+                const sourceSpan = document.createElement('span');
+                sourceSpan.classList.add('log-source');
+                sourceSpan.textContent = `[${source.toUpperCase()}]`;
+                messageLine.appendChild(sourceSpan);
+            }
+            
+            const messageTextNode = document.createTextNode(` ${message}`);
+            messageLine.appendChild(messageTextNode);
+            logEntry.appendChild(messageLine);
+
+            if (details && Object.keys(details).length > 0) {
+                const detailsPre = document.createElement('pre');
+                detailsPre.style.marginLeft = '20px';
+                detailsPre.style.fontSize = '0.9em';
+                detailsPre.style.color = '#95a5a6'; // details 색상 (log-debug와 유사하게)
+                detailsPre.style.whiteSpace = 'pre-wrap';
+                detailsPre.style.wordBreak = 'break-all';
+                detailsPre.style.padding = '2px 5px';
+                detailsPre.style.backgroundColor = 'hsl(206 48% 8%)'; // details 배경 살짝 다르게
+                detailsPre.style.borderRadius = '3px';
+                try {
+                    detailsPre.textContent = JSON.stringify(details, null, 2);
+                } catch (e) {
+                    detailsPre.textContent = 'Details (not serializable)';
+                }
+                logEntry.appendChild(detailsPre);
+            }
+
+            serverLogOutputEl.appendChild(logEntry);
+
+            // 최대 로그 라인 수 유지 (각 logEntry를 하나의 단위로 계산)
+            while (serverLogOutputEl.childNodes.length > MAX_LOG_LINES) {
+                serverLogOutputEl.removeChild(serverLogOutputEl.firstChild);
+            }
+
+            serverLogOutputEl.scrollTop = serverLogOutputEl.scrollHeight;
+        });
+
+        if (clearServerLogBtn && serverLogOutputEl) {
+            clearServerLogBtn.addEventListener('click', () => {
+                serverLogOutputEl.innerHTML = '';
+                const p = document.createElement('p');
+                p.className = 'log-message log-info';
+                const timeSpan = document.createElement('span');
+                timeSpan.className = 'log-timestamp';
+                timeSpan.textContent = `[${new Date().toLocaleTimeString('ko-KR', { hour12: false })}]`;
+                p.appendChild(timeSpan);
+                p.appendChild(document.createTextNode(' 로그가 사용자에 의해 지워졌습니다.'));
+                serverLogOutputEl.appendChild(p);
+            });
+        }
 
         async function fetchWalletBalance() {
             if (!balanceUsdtEl || !balanceTotalUsdtEl) return;
@@ -245,7 +536,7 @@
                 const allChartData = await response.json();
 
                 const commonChartOptions = {
-                    layout: {
+            layout: {
                         background: { type: 'solid', color: 'hsl(206 48% 15%)' },
                         textColor: 'hsl(210 17% 85%)',
                     },
@@ -377,9 +668,62 @@
             }
         });
         
+        async function fetchTradeHistory() {
+            if (!tradeHistoryBodyEl || !tradeHistoryStatusEl) {
+                console.warn('Trade history elements not found');
+                return;
+            }
+
+            const symbol = tradeSymbolInput.value.toUpperCase() || 'BTCUSDT';
+            const limit = parseInt(tradeLimitInput.value) || 50;
+
+            tradeHistoryStatusEl.textContent = `${symbol} 거래 내역 로딩 중...`;
+            tradeHistoryBodyEl.innerHTML = ''; // 기존 내역 초기화
+
+            try {
+                const response = await fetch(`/api/trade-history?symbol=${symbol}&limit=${limit}`);
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ message: 'Unknown error with no JSON response' }));
+                    throw new Error(`HTTP ${response.status}: ${errorData.message || response.statusText}`);
+                }
+                const trades = await response.json();
+
+                if (trades && trades.length > 0) {
+                    trades.forEach(trade => {
+                        const row = tradeHistoryBodyEl.insertRow();
+                        row.insertCell().textContent = trade.time;
+                        row.insertCell().textContent = trade.symbol;
+                        const sideCell = row.insertCell();
+                        sideCell.textContent = trade.side;
+                        sideCell.classList.add(trade.side === 'BUY' ? 'side-buy' : 'side-sell');
+                        row.insertCell().textContent = trade.price;
+                        row.insertCell().textContent = trade.quantity;
+                        row.insertCell().textContent = trade.quoteQty; 
+                        row.insertCell().textContent = trade.commission;
+                        const pnlCell = row.insertCell();
+                        pnlCell.textContent = trade.realizedPnl;
+                        const pnlValue = parseFloat(trade.realizedPnl);
+                        if (pnlValue > 0) pnlCell.classList.add('pnl-profit');
+                        else if (pnlValue < 0) pnlCell.classList.add('pnl-loss');
+                    });
+                    tradeHistoryStatusEl.textContent = `${trades.length}개 거래 내역 로드 완료.`;
+                } else {
+                    tradeHistoryStatusEl.textContent = '해당 조건의 거래 내역이 없습니다.';
+                }
+            } catch (error) {
+                console.error('거래 내역 로드 오류:', error);
+                tradeHistoryStatusEl.textContent = `오류: ${error.message}`;
+            }
+        }
+
+        if (fetchTradesBtn) {
+            fetchTradesBtn.addEventListener('click', fetchTradeHistory);
+        }
+
         async function initializePage() {
             await fetchHistoricalData();
             await fetchWalletBalance();
+            await fetchTradeHistory(); // 페이지 초기화 시 기본 거래 내역 로드
         }
 
         initializePage();

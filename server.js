@@ -27,10 +27,18 @@ let currentPosition = 'NONE'; // 현재 포지션 상태 (NONE, LONG, SHORT)
 
 // 과거 캔들 데이터 API 엔드포인트
 app.get('/api/historical-klines', async (req, res) => {
+  const logMessageStart = 'Request received for /api/historical-klines';
+  console.log(logMessageStart);
+  io.emit('server-log', { type: 'info', source: '/api/historical-klines', message: logMessageStart });
+
   try {
     const symbol = 'BTCUSDT';
     const interval = '4h';
-    const limit = MAX_RECENT_CANDLES; // 초기 데이터도 MAX_RECENT_CANDLES 만큼 가져옴
+    const limit = MAX_RECENT_CANDLES;
+
+    const logFetch = `Fetching historical klines: ${symbol}, ${interval}, limit ${limit}`;
+    console.log(logFetch);
+    io.emit('server-log', { type: 'info', source: '/api/historical-klines', message: logFetch });
 
     const response = await axios.get('https://fapi.binance.com/fapi/v1/klines', {
       params: { symbol: symbol, interval: interval, limit: limit }
@@ -78,22 +86,35 @@ app.get('/api/historical-klines', async (req, res) => {
     const heikinAshiRSI = indicators.calculateRSI(heikinAshiCandles, RSI_PERIOD);
     const heikinAshiStochRSI = indicators.calculateStochasticRSI(heikinAshiRSI, STOCH_PERIOD, K_PERIOD, D_PERIOD);
     
-    res.json({
+    const responseData = {
       regularCandles: clientFormatKlines,
       regularEMA200: regularEMA, // 이름 일관성 유지 (클라이언트에서 ema200Series로 사용중)
       regularStochRSI: regularStochRSI,
       heikinAshiCandles: heikinAshiCandles,
       heikinAshiEMA200: heikinAshiEMA, // 이름 일관성 유지
       heikinAshiStochRSI: heikinAshiStochRSI
-    });
+    };
+
+    const logSuccess = `Successfully fetched and processed ${clientFormatKlines.length} historical klines.`;
+    console.log(logSuccess);
+    io.emit('server-log', { type: 'success', source: '/api/historical-klines', message: logSuccess, details: { count: clientFormatKlines.length } });
+
+    res.json(responseData);
   } catch (error) {
-    console.error('과거 캔들 데이터 API 오류:', error.response ? error.response.data : error.message);
+    const errorMessage = error.response ? JSON.stringify(error.response.data) : error.message;
+    const logError = `Error in /api/historical-klines: ${errorMessage}`;
+    console.error(logError);
+    io.emit('server-log', { type: 'error', source: '/api/historical-klines', message: logError, details: { errorData: errorMessage } });
     res.status(500).json({ message: '과거 캔들 데이터를 가져오는 데 실패했습니다.' });
   }
 });
 
 // --- 선물 지갑 잔고 API 엔드포인트 추가 ---
 app.get('/api/futures-balance', async (req, res) => {
+    const logMessageStart = 'Request received for /api/futures-balance';
+    console.log(logMessageStart);
+    io.emit('server-log', { type: 'info', source: '/api/futures-balance', message: logMessageStart });
+
     const apiKey = process.env.BINANCE_API_KEY;
     const apiSecret = process.env.BINANCE_API_SECRET;
 
@@ -107,7 +128,10 @@ app.get('/api/futures-balance', async (req, res) => {
     const signature = crypto.createHmac('sha256', apiSecret).update(queryString).digest('hex');
 
     try {
-        console.log('Fetching Binance Futures balance via /api/futures-balance (direct axios call)...');
+        const logFetch = 'Fetching Binance Futures balance via /api/futures-balance (direct axios call)...';
+        console.log(logFetch);
+        io.emit('server-log', { type: 'info', source: '/api/futures-balance', message: logFetch });
+
         const response = await axios.get('https://fapi.binance.com/fapi/v2/balance', { // v2 잔고 엔드포인트
             headers: { 'X-MBX-APIKEY': apiKey },
             params: {
@@ -128,7 +152,9 @@ app.get('/api/futures-balance', async (req, res) => {
         let totalWalletBalanceInUsdt = 0;
         totalWalletBalanceInUsdt = usdtAsset ? parseFloat(usdtAsset.crossWalletBalance) : usdtAvailableBalance;
         
-        console.log('Successfully fetched futures balance (direct):', { usdtBalance: usdtAvailableBalance, totalWalletBalanceUsdt: totalWalletBalanceInUsdt });
+        const logSuccess = `Successfully fetched futures balance (direct): USDT: ${usdtAvailableBalance.toFixed(2)}, Total: ${totalWalletBalanceInUsdt.toFixed(2)}`;
+        console.log(logSuccess);
+        io.emit('server-log', { type: 'success', source: '/api/futures-balance', message: logSuccess, details: { usdtBalance: usdtAvailableBalance, totalWalletBalanceUsdt: totalWalletBalanceInUsdt } });
 
         res.json({
             usdtBalance: usdtAvailableBalance.toFixed(2),
@@ -136,10 +162,83 @@ app.get('/api/futures-balance', async (req, res) => {
         });
 
     } catch (error) {
-        console.error('Error in /api/futures-balance endpoint (direct):', error.response ? error.response.data : error.message);
+        const errorMessage = error.response ? JSON.stringify(error.response.data) : error.message;
+        const logError = `Error in /api/futures-balance endpoint (direct): ${errorMessage}`;
+        console.error(logError);
+        io.emit('server-log', { type: 'error', source: '/api/futures-balance', message: logError, details: { errorData: errorMessage } });
         res.status(error.response ? error.response.status : 500).json({
             message: 'Failed to fetch futures balance from server (direct)',
-            details: error.response ? error.response.data : error.message
+            details: errorMessage
+        });
+    }
+});
+
+// --- 사용자의 특정 심볼 거래 내역 API 엔드포인트 추가 ---
+app.get('/api/trade-history', async (req, res) => {
+    const symbol = req.query.symbol || 'BTCUSDT';
+    const limit = parseInt(req.query.limit) || 50;
+    const logMessageStart = `Request received for /api/trade-history (Symbol: ${symbol}, Limit: ${limit})`;
+    console.log(logMessageStart);
+    io.emit('server-log', { type: 'info', source: '/api/trade-history', message: logMessageStart, details: { symbol, limit } });
+
+    const apiKey = process.env.BINANCE_API_KEY;
+    const apiSecret = process.env.BINANCE_API_SECRET;
+
+    if (!apiKey || !apiSecret) {
+        console.error('API Key or Secret not configured in .env file for trade history');
+        return res.status(500).json({ message: 'API Key or Secret not configured.' });
+    }
+
+    const timestamp = Date.now();
+    const queryString = `symbol=${symbol}&limit=${limit}&timestamp=${timestamp}`;
+    const signature = crypto.createHmac('sha256', apiSecret).update(queryString).digest('hex');
+
+    try {
+        const logFetch = `Fetching trade history for ${symbol} via /api/trade-history...`;
+        console.log(logFetch);
+        io.emit('server-log', { type: 'info', source: '/api/trade-history', message: logFetch });
+
+        const response = await axios.get('https://fapi.binance.com/fapi/v1/userTrades', {
+            headers: { 'X-MBX-APIKEY': apiKey },
+            params: { symbol, limit, timestamp, signature }
+        });
+
+        const tradesRaw = response.data;
+
+        const tradesFormatted = tradesRaw
+            .sort((a, b) => b.time - a.time) 
+            .map(trade => {
+                const isBTC = trade.symbol.includes('BTC');
+                const pnl = parseFloat(trade.realizedPnl);
+                const commissionNum = parseFloat(trade.commission);
+
+                return {
+                    time: new Date(trade.time).toLocaleString('ko-KR', { hour12: false }),
+                    symbol: trade.symbol,
+                    side: trade.side,
+                    price: parseFloat(trade.price).toFixed(isBTC && !trade.symbol.startsWith('WBTC') ? 2 : 4),
+                    quantity: parseFloat(trade.qty).toFixed(isBTC && !trade.symbol.startsWith('WBTC') ? 4 : 2),
+                    quoteQty: parseFloat(trade.quoteQty).toFixed(2),
+                    commission: `${commissionNum.toFixed(8)} ${trade.commissionAsset}`,
+                    realizedPnl: pnl.toFixed(2),
+                    isProfit: pnl > 0, 
+                    orderId: trade.orderId
+                };
+            });
+        
+        const logSuccess = `Successfully fetched and formatted ${tradesFormatted.length} trades for ${symbol}.`;
+        console.log(logSuccess);
+        io.emit('server-log', { type: 'success', source: '/api/trade-history', message: logSuccess, details: { count: tradesFormatted.length, symbol } });
+        res.json(tradesFormatted);
+
+    } catch (error) {
+        const errorMessage = error.response ? JSON.stringify(error.response.data) : error.message;
+        const logError = `Error in /api/trade-history endpoint for ${symbol}: ${errorMessage}`;
+        console.error(logError);
+        io.emit('server-log', { type: 'error', source: '/api/trade-history', message: logError, details: { errorData: errorMessage, symbol } });
+        res.status(error.response ? error.response.status : 500).json({
+            message: `Failed to fetch trade history for ${symbol}`,
+            details: errorMessage
         });
     }
 });
@@ -149,9 +248,14 @@ const binanceWs = new WebSocket('wss://fstream.binance.com/ws/btcusdt@kline_4h')
 
 // 클라이언트 연결시 이벤트
 io.on('connection', (socket) => {
-  console.log('클라이언트가 연결되었습니다');
+  const logConnect = `Client connected: ${socket.id}`;
+  console.log(logConnect);
+  io.emit('server-log', { type: 'info', source: 'socket.io', message: logConnect, details: { clientId: socket.id } });
+  
   socket.on('disconnect', () => {
-    console.log('클라이언트가 연결을 끊었습니다');
+    const logDisconnect = `Client disconnected: ${socket.id}`;
+    console.log(logDisconnect);
+    io.emit('server-log', { type: 'info', source: 'socket.io', message: logDisconnect, details: { clientId: socket.id } });
   });
 });
 
@@ -233,6 +337,10 @@ function processAndEmitFullChartData(socketEmitter) {
         heikinAshiStochRSI: heikinAshiStochRSI,
         strategySignal: strategySignal // 전략 신호 객체 추가
     };
+    const logEmit = `Emitting 'full_chart_update' with ${currentCandles.length} regular candles and ${heikinAshiCandles.length} HA candles.`;
+    // console.log(logEmit); // 이 로그는 너무 빈번할 수 있으므로 주석 처리 또는 조건부로 emit
+    // io.emit('server-log', { type: 'debug', source: 'processAndEmitFullChartData', message: logEmit, details: { regularCount: currentCandles.length, haCount: heikinAshiCandles.length } });
+
     socketEmitter.emit('full_chart_update', allCalculatedData);
 }
 
@@ -240,8 +348,12 @@ function processAndEmitFullChartData(socketEmitter) {
 binanceWs.on('message', (data) => {
   try {
     const parsedData = JSON.parse(data);
-    if (parsedData.k) { // kline 데이터
+    if (parsedData.k) { 
       const kline = parsedData.k;
+      const logWsReceive = `Received kline update from WebSocket for ${kline.s} at ${new Date(kline.t).toLocaleTimeString()}`;
+      // console.log(logWsReceive); // 이 로그는 너무 빈번할 수 있으므로 주석 처리 또는 조건부로 emit
+      // io.emit('server-log', { type: 'debug', source: 'WebSocket', message: logWsReceive, details: { symbol: kline.s, time: kline.t} });
+      
       const newCandle = {
         time: kline.t / 1000,
         open: parseFloat(kline.o),
@@ -268,16 +380,25 @@ binanceWs.on('message', (data) => {
       processAndEmitFullChartData(io);
     }
   } catch (error) {
-    console.error('실시간 메시지 처리 오류:', error);
+    const errorMessage = error.message;
+    const logWsError = `Error processing WebSocket message: ${errorMessage}`;
+    console.error(logWsError);
+    io.emit('server-log', { type: 'error', source: 'WebSocket', message: logWsError, details: { errorData: errorMessage } });
   }
 });
 
 binanceWs.on('error', (error) => {
-  console.error('웹소켓 오류:', error);
+  const errorMessage = error.message;
+  const logWsConnError = `WebSocket connection error: ${errorMessage}`;
+  console.error(logWsConnError);
+  io.emit('server-log', { type: 'error', source: 'WebSocket', message: logWsConnError, details: { errorData: errorMessage } });
 });
 
 // 서버 시작
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+  const logServerStart = `Server listening on port ${PORT}`;
+  console.log(logServerStart);
+  io.emit('server-log', { type: 'info', source: 'server', message: logServerStart, details: { port: PORT } });
+  // fetchKlinesAndProcess(); // 이 함수는 API 엔드포인트 호출 시 또는 웹소켓 연결 시 데이터 가져오므로 중복 호출 방지
 }); 
