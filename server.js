@@ -5,6 +5,8 @@ const path = require('path');
 const socketIo = require('socket.io');
 const axios = require('axios');
 const indicators = require('./utils/indicatorCalculator'); // 계산 모듈 가져오기
+const crypto = require('crypto');
+require('dotenv').config();
 
 const app = express();
 const server = http.createServer(app);
@@ -22,7 +24,6 @@ const K_PERIOD = 3;
 const D_PERIOD = 3;
 const EMA_PERIOD = 200;
 let currentPosition = 'NONE'; // 현재 포지션 상태 (NONE, LONG, SHORT)
-let lastSignalTime = 0; // 마지막 신호 발생 시간 (중복 신호 방지용, 선택적)
 
 // 과거 캔들 데이터 API 엔드포인트
 app.get('/api/historical-klines', async (req, res) => {
@@ -91,14 +92,64 @@ app.get('/api/historical-klines', async (req, res) => {
   }
 });
 
+// --- 선물 지갑 잔고 API 엔드포인트 추가 ---
+app.get('/api/futures-balance', async (req, res) => {
+    const apiKey = process.env.BINANCE_API_KEY;
+    const apiSecret = process.env.BINANCE_API_SECRET;
+
+    if (!apiKey || !apiSecret) {
+        console.error('API Key or Secret not configured in .env file');
+        return res.status(500).json({ message: 'API Key or Secret not configured.' });
+    }
+
+    const timestamp = Date.now();
+    const queryString = `timestamp=${timestamp}`;
+    const signature = crypto.createHmac('sha256', apiSecret).update(queryString).digest('hex');
+
+    try {
+        console.log('Fetching Binance Futures balance via /api/futures-balance (direct axios call)...');
+        const response = await axios.get('https://fapi.binance.com/fapi/v2/balance', { // v2 잔고 엔드포인트
+            headers: { 'X-MBX-APIKEY': apiKey },
+            params: {
+                timestamp: timestamp,
+                signature: signature
+            }
+        });
+
+        const balances = response.data;
+        if (!balances || balances.length === 0) {
+            console.warn('No futures balance data received from Binance or balance is empty.');
+            return res.status(404).json({ error: 'Failed to fetch futures balance or balance is empty.' });
+        }
+
+        const usdtAsset = balances.find(asset => asset.asset === 'USDT');
+        const usdtAvailableBalance = usdtAsset ? parseFloat(usdtAsset.availableBalance) : 0;
+
+        let totalWalletBalanceInUsdt = 0;
+        totalWalletBalanceInUsdt = usdtAsset ? parseFloat(usdtAsset.crossWalletBalance) : usdtAvailableBalance;
+        
+        console.log('Successfully fetched futures balance (direct):', { usdtBalance: usdtAvailableBalance, totalWalletBalanceUsdt: totalWalletBalanceInUsdt });
+
+        res.json({
+            usdtBalance: usdtAvailableBalance.toFixed(2),
+            totalWalletBalanceUsdt: totalWalletBalanceInUsdt.toFixed(2)
+        });
+
+    } catch (error) {
+        console.error('Error in /api/futures-balance endpoint (direct):', error.response ? error.response.data : error.message);
+        res.status(error.response ? error.response.status : 500).json({
+            message: 'Failed to fetch futures balance from server (direct)',
+            details: error.response ? error.response.data : error.message
+        });
+    }
+});
+
 // 바이낸스 웹소켓 연결 (비트코인 선물)
 const binanceWs = new WebSocket('wss://fstream.binance.com/ws/btcusdt@kline_4h');
 
 // 클라이언트 연결시 이벤트
 io.on('connection', (socket) => {
   console.log('클라이언트가 연결되었습니다');
-  // 첫 연결 시 현재까지 누적된 recentCandles 기반 풀 데이터 전송 (선택적)
-  // processAndEmitFullChartData(io);
   socket.on('disconnect', () => {
     console.log('클라이언트가 연결을 끊었습니다');
   });
@@ -157,12 +208,9 @@ function processAndEmitFullChartData(socketEmitter) {
         if (currentPosition === 'NONE') { // 현재 포지션이 없을 때만 진입 신호 확인
             if (trendConditionLong && directionConditionLong && oscillatorConditionLong) {
                 strategySignal.signal = 'LONG_ENTRY';
-                // currentPosition = 'LONG'; // 실제 진입은 다음 캔들 시가이므로, 여기서 바로 상태 변경 안 함
-                                           // 혹은, 신호 발생 시 바로 포지션 예약 상태로 변경 가능
                 console.log(`매수 진입 신호 발생: Time=${new Date(latestHaCandle.time * 1000).toLocaleString()}`);
             } else if (trendConditionShort && directionConditionShort && oscillatorConditionShort) {
                 strategySignal.signal = 'SHORT_ENTRY';
-                // currentPosition = 'SHORT';
                 console.log(`매도 진입 신호 발생: Time=${new Date(latestHaCandle.time * 1000).toLocaleString()}`);
             }
         }
@@ -215,7 +263,6 @@ binanceWs.on('message', (data) => {
           recentCandles.shift(); // 가장 오래된 캔들 제거
         }
       }
-      // recentCandles.sort((a, b) => a.time - b.time); // 시간순 정렬 (필요시, push/shift면 유지될 수도)
 
       // 업데이트된 recentCandles 기반으로 모든 지표 재계산 후 클라이언트에 전송
       processAndEmitFullChartData(io);
@@ -232,5 +279,5 @@ binanceWs.on('error', (error) => {
 // 서버 시작
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`서버가 포트 ${PORT}에서 실행 중입니다`);
+  console.log(`Server listening on port ${PORT}`);
 }); 

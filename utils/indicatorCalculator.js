@@ -10,7 +10,6 @@ function calculateSMA(data, period) {
     for (let i = period - 1; i < data.length; i++) {
         let sum = 0;
         for (let j = 0; j < period; j++) {
-            // data가 [{time, value}, ...] 형태라고 가정
             sum += data[i - j].value;
         }
         smaValues.push({ time: data[i].time, value: sum / period });

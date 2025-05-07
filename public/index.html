@@ -8,7 +8,6 @@
     <script src="/socket.io/socket.io.js"></script>
     <style>
         :root {
-            /* Dark Theme Colors from color_usage.md */
             --background: hsl(206 48% 11%);
             --foreground: hsl(210 17% 85%);
             --card: hsl(206 48% 15%);
@@ -54,14 +53,14 @@
             width: 100%;
             height: 350px; 
             margin-bottom: 10px;
-            background-color: var(--chart-bg-forced) !important; /* CSS로 차트 배경색 강제 지정 */
+            background-color: var(--chart-bg-forced) !important;
         }
         #stoch-rsi-chart-container, #ha-stoch-rsi-chart-container { 
             width: 100%;
             height: 100px; 
             margin-top: 5px;
             margin-bottom: 10px;
-            background-color: var(--chart-bg-forced) !important; /* CSS로 차트 배경색 강제 지정 */
+            background-color: var(--chart-bg-forced) !important;
         }
         h1 {
             color: var(--card-foreground);
@@ -73,7 +72,7 @@
         .price-info {
             text-align: center;
             width: 100%;
-            margin-top: 10px; /* 전략 상태 표시 영역과의 간격 */
+            margin-top: 10px;
         }
         .price-info p {
             margin: 5px 0;
@@ -82,54 +81,60 @@
         }
         .price-value {
             font-weight: bold;
-            color: var(--chart-2-green); /* Using chart green for price value */
+            color: var(--chart-2-green);
         }
-        .strategy-status {
-            width: 100%; /* body의 padding 내에서 꽉 차도록 */
-            padding: 15px; /* chart-group과 유사하게 */
-            margin-top: 20px; /* charts-wrapper와의 간격 */
+
+        .strategy-status li span {
+            font-weight: bold;
+        }
+        .status-true {
+            color: hsl(145 44% 51%);
+        }
+        .status-false {
+            color: hsl(0 72% 57%);
+        }
+        .signal-long {
+            color: hsl(145 44% 61%);
+            font-weight: bold;
+        }
+        .signal-short {
+            color: hsl(0 72% 67%);
+            font-weight: bold;
+        }
+        .signal-none {
+            color: var(--muted-foreground);
+        }
+        .info-row {
+            display: flex;
+            gap: 20px;
+            width: 100%;
+            margin-top: 20px;
+        }
+        .info-card {
+            flex: 1;
+            padding: 15px;
             border: 1px solid var(--border);
-            border-radius: 8px; /* chart-group과 유사하게 */
-            background-color: var(--card); /* chart-group과 유사하게 */
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2); /* chart-group과 유사하게 */
-            box-sizing: border-box; /* padding과 border가 width에 포함되도록 */
+            border-radius: 8px;
+            background-color: var(--card);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            box-sizing: border-box;
         }
-        .strategy-status h4 {
+        .wallet-balance h4, .strategy-status h4 {
             margin-top: 0;
-            margin-bottom: 8px;
+            margin-bottom: 10px;
             color: var(--foreground);
-            font-size: 0.9em;
+            font-size: 1.1em;
             text-align: center;
         }
-        .strategy-status p,
+        .wallet-balance p, .strategy-status p,
         .strategy-status ul {
-            margin: 5px 0;
-            font-size: 0.85em;
+            margin: 8px 0;
+            font-size: 0.9em;
             color: var(--muted-foreground);
         }
         .strategy-status ul {
             list-style: none;
             padding-left: 0;
-        }
-        .strategy-status li span {
-            font-weight: bold;
-        }
-        .status-true {
-            color: hsl(145 44% 51%); /* --primary (초록) */
-        }
-        .status-false {
-            color: hsl(0 72% 57%); /* --destructive (빨강) */
-        }
-        .signal-long {
-            color: hsl(145 44% 61%); /* 더 밝은 초록 */
-            font-weight: bold;
-        }
-        .signal-short {
-            color: hsl(0 72% 67%); /* 더 밝은 빨강 */
-            font-weight: bold;
-        }
-        .signal-none {
-            color: var(--muted-foreground);
         }
     </style>
 </head>
@@ -137,10 +142,10 @@
     <div class="charts-wrapper">
         <div class="chart-group">
             <h1>일반 캔들 차트</h1>
-            <div id="chart-container"></div>
+    <div id="chart-container"></div>
             <div id="stoch-rsi-chart-container"></div>
-            <div class="price-info">
-                <p>현재가: <span id="current-price" class="price-value">로딩 중...</span></p>
+    <div class="price-info">
+        <p>현재가: <span id="current-price" class="price-value">로딩 중...</span></p>
             </div>
         </div>
         <div class="chart-group">
@@ -152,23 +157,31 @@
             </div>
         </div>
     </div>
-    <div class="strategy-status">
-        <h4>매매 신호 (HA 기준)</h4>
-        <p>포지션: <span id="ha-current-position">-</span></p>
-        <p>최근 신호: <strong id="ha-signal-type" class="signal-none">-</strong></p>
-        <p>신호 시간: <span id="ha-signal-time">-</span></p>
-        <ul>
-            <li>매수 조건:</li>
-            <li>&nbsp;&nbsp;추세 (HA종가 &gt; EMA200): <span id="ha-cond-long-trend">-</span></li>
-            <li>&nbsp;&nbsp;방향 (HA양봉): <span id="ha-cond-long-direction">-</span></li>
-            <li>&nbsp;&nbsp;StochRSI (20 상향돌파): <span id="ha-cond-long-oscillator">-</span></li>
-        </ul>
-        <ul>
-            <li>매도 조건:</li>
-            <li>&nbsp;&nbsp;추세 (HA종가 &lt; EMA200): <span id="ha-cond-short-trend">-</span></li>
-            <li>&nbsp;&nbsp;방향 (HA음봉): <span id="ha-cond-short-direction">-</span></li>
-            <li>&nbsp;&nbsp;StochRSI (80 하향돌파): <span id="ha-cond-short-oscillator">-</span></li>
-        </ul>
+
+    <div class="info-row">
+        <div class="wallet-balance info-card">
+            <h4>선물 지갑 잔고</h4>
+            <p>USDT: <span id="balance-usdt">로딩 중...</span></p>
+            <p>총 평가액 (USDT): <span id="balance-total-usdt">로딩 중...</span></p>
+        </div>
+        <div class="strategy-status info-card">
+            <h4>매매 신호 (HA 기준)</h4>
+            <p>포지션: <span id="ha-current-position">-</span></p>
+            <p>최근 신호: <strong id="ha-signal-type" class="signal-none">-</strong></p>
+            <p>신호 시간: <span id="ha-signal-time">-</span></p>
+            <ul>
+                <li>매수 조건:</li>
+                <li>&nbsp;&nbsp;추세 (HA종가 &gt; EMA200): <span id="ha-cond-long-trend">-</span></li>
+                <li>&nbsp;&nbsp;방향 (HA양봉): <span id="ha-cond-long-direction">-</span></li>
+                <li>&nbsp;&nbsp;StochRSI (20 상향돌파): <span id="ha-cond-long-oscillator">-</span></li>
+            </ul>
+            <ul>
+                <li>매도 조건:</li>
+                <li>&nbsp;&nbsp;추세 (HA종가 &lt; EMA200): <span id="ha-cond-short-trend">-</span></li>
+                <li>&nbsp;&nbsp;방향 (HA음봉): <span id="ha-cond-short-direction">-</span></li>
+                <li>&nbsp;&nbsp;StochRSI (80 하향돌파): <span id="ha-cond-short-oscillator">-</span></li>
+            </ul>
+        </div>
     </div>
 
     <script>
@@ -193,7 +206,35 @@
         const haCondShortDirectionEl = document.getElementById('ha-cond-short-direction');
         const haCondShortOscillatorEl = document.getElementById('ha-cond-short-oscillator');
 
-        let isChartReady = false; // 차트 및 시리즈 준비 완료 플래그
+        const balanceUsdtEl = document.getElementById('balance-usdt');
+        const balanceTotalUsdtEl = document.getElementById('balance-total-usdt');
+
+        let isChartReady = false;
+
+        async function fetchWalletBalance() {
+            if (!balanceUsdtEl || !balanceTotalUsdtEl) return;
+            try {
+                balanceUsdtEl.textContent = '로딩 중...';
+                balanceTotalUsdtEl.textContent = '로딩 중...';
+                
+                const response = await fetch('/api/futures-balance');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const balanceData = await response.json();
+
+                if (balanceData) {
+                    balanceUsdtEl.textContent = `${parseFloat(balanceData.usdtBalance || 0).toFixed(2)} USDT`;
+                    balanceTotalUsdtEl.textContent = `${parseFloat(balanceData.totalWalletBalanceUsdt || 0).toFixed(2)} USDT`;
+                } else {
+                    throw new Error('잔고 데이터를 받지 못했습니다.');
+                }
+            } catch (error) {
+                console.error('선물 지갑 잔고 로드 오류:', error);
+                balanceUsdtEl.textContent = '로드 실패';
+                balanceTotalUsdtEl.textContent = '로드 실패';
+            }
+        }
 
         async function fetchHistoricalData() {
             try {
@@ -249,13 +290,13 @@
                 }
 
                 updateAllChartSeries(allChartData);
-                isChartReady = true; // 모든 차트 및 시리즈 준비 완료
+                isChartReady = true;
 
             } catch (error) {
                 console.error('과거 데이터 로드 및 차트 생성 오류:', error);
                 currentPriceElement.textContent = '로드 실패';
                 haCurrentPriceElement.textContent = '로드 실패';
-                isChartReady = false; // 오류 발생 시 false 유지
+                isChartReady = false;
             }
         }
 
@@ -306,7 +347,6 @@
         function updateAllChartSeries(allChartData) {
             if (!allChartData) return;
 
-            // 각 시리즈가 존재하는지 확인 후 setData 호출
             if (candleSeries) candleSeries.setData(allChartData.regularCandles || []);
             if (ema200Series) ema200Series.setData(allChartData.regularEMA200 || []);
             if (stochKSeries) stochKSeries.setData(allChartData.regularStochRSI ? allChartData.regularStochRSI.kLine : []);
@@ -317,7 +357,6 @@
             if (haStochKSeries) haStochKSeries.setData(allChartData.heikinAshiStochRSI ? allChartData.heikinAshiStochRSI.kLine : []);
             if (haStochDSeries) haStochDSeries.setData(allChartData.heikinAshiStochRSI ? allChartData.heikinAshiStochRSI.dLine : []);
 
-            // 현재가 업데이트 (이전과 동일)
             if (allChartData.regularCandles && allChartData.regularCandles.length > 0) {
                 const lastCandle = allChartData.regularCandles[allChartData.regularCandles.length - 1];
                 currentPriceElement.textContent = parseFloat(lastCandle.close).toFixed(2) + ' USDT';
@@ -327,21 +366,24 @@
                 haCurrentPriceElement.textContent = parseFloat(lastHaCandle.close).toFixed(2) + ' USDT';
             } else { haCurrentPriceElement.textContent = '데이터 없음'; }
 
-            // 전략 상태 UI 업데이트 호출
             if (allChartData.strategySignal) {
                 updateStrategyStatusUI(allChartData.strategySignal);
             }
         }
         
         socket.on('full_chart_update', (allCalculatedData) => {
-            if (isChartReady) { // 차트가 준비되었을 때만 업데이트 실행
+            if (isChartReady) {
                 updateAllChartSeries(allCalculatedData);
-            } else {
-                // console.log('Received full_chart_update but chart is NOT ready yet');
             }
         });
         
-        fetchHistoricalData();
+        async function initializePage() {
+            await fetchHistoricalData();
+            await fetchWalletBalance();
+        }
+
+        initializePage();
+
         window.addEventListener('resize', () => {
             if (chart) chart.applyOptions({ width: chartContainer.clientWidth, height: chartContainer.clientHeight });
             if (haChart) haChart.applyOptions({ width: haChartContainer.clientWidth, height: haChartContainer.clientHeight });
