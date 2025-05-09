@@ -396,6 +396,10 @@
         let chart, candleSeries, ema200Series, stochRsiChart, stochKSeries, stochDSeries, stochRsiOverboughtLine, stochRsiOversoldLine;
         let haChart, haCandleSeries, haEma200Series, haStochRsiChart, haStochKSeries, haStochDSeries, haStochRsiOverboughtLine, haStochRsiOversoldLine;
         
+        // 볼린저 밴드 시리즈 변수 선언 추가
+        let bollingerBandsUpperSeries, bollingerBandsMiddleSeries, bollingerBandsLowerSeries;
+        let haBollingerBandsUpperSeries, haBollingerBandsMiddleSeries, haBollingerBandsLowerSeries;
+
         const chartContainer = document.getElementById('chart-container');
         const currentPriceElement = document.getElementById('current-price');
         const haChartContainer = document.getElementById('ha-chart-container');
@@ -578,7 +582,7 @@
                         textColor: 'hsl(210 17% 85%)',
                     },
                     grid: { vertLines: { visible: false }, horzLines: { color: 'hsl(206 40% 20%)' } },
-                    timeScale: { visible: false }, 
+                    timeScale: { borderColor: 'hsl(206 40% 25%)', timeVisible: true, secondsVisible: false },
                     rightPriceScale: { visible: true, mode: LightweightCharts.PriceScaleMode.Normal, borderColor: 'hsl(206 40% 25%)' }
                 };
 
@@ -586,6 +590,11 @@
                     chart = LightweightCharts.createChart(chartContainer, { width: chartContainer.clientWidth, height: chartContainer.clientHeight, ...commonChartOptions });
                     candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, { upColor: 'hsl(145 44% 51%)', downColor: 'hsl(0 72% 57%)', borderDownColor: 'hsl(0 72% 57%)', borderUpColor: 'hsl(145 44% 51%)', wickDownColor: 'hsl(0 72% 57%)', wickUpColor: 'hsl(145 44% 51%)' });
                     ema200Series = chart.addSeries(LightweightCharts.LineSeries, { color: 'hsl(220 70% 50%)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false });
+                    
+                    // 일반 차트 볼린저 밴드 시리즈 추가
+                    bollingerBandsUpperSeries = chart.addSeries(LightweightCharts.LineSeries, { color: 'rgba(255, 82, 82, 0.7)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: 'BB상단' });
+                    bollingerBandsMiddleSeries = chart.addSeries(LightweightCharts.LineSeries, { color: 'rgba(255, 152, 0, 0.7)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: 'BB중단' });
+                    bollingerBandsLowerSeries = chart.addSeries(LightweightCharts.LineSeries, { color: 'rgba(76, 175, 80, 0.7)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: 'BB하단' });
                 }
                 if (!stochRsiChart) {
                     stochRsiChart = LightweightCharts.createChart(stochRsiChartContainer, { width: stochRsiChartContainer.clientWidth, height: stochRsiChartContainer.clientHeight, ...commonStochRsiOptions });
@@ -598,6 +607,11 @@
                     haChart = LightweightCharts.createChart(haChartContainer, { width: haChartContainer.clientWidth, height: haChartContainer.clientHeight, ...commonChartOptions });
                     haCandleSeries = haChart.addSeries(LightweightCharts.CandlestickSeries, { upColor: 'hsl(145 44% 51%)', downColor: 'hsl(0 72% 57%)', borderDownColor: 'hsl(0 72% 57%)', borderUpColor: 'hsl(145 44% 51%)', wickDownColor: 'hsl(0 72% 57%)', wickUpColor: 'hsl(145 44% 51%)' });
                     haEma200Series = haChart.addSeries(LightweightCharts.LineSeries, { color: 'hsl(220 70% 50%)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false });
+
+                    // 하이킨아시 차트 볼린저 밴드 시리즈 추가
+                    haBollingerBandsUpperSeries = haChart.addSeries(LightweightCharts.LineSeries, { color: 'rgba(255, 82, 82, 0.7)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: 'HA BB상단' });
+                    haBollingerBandsMiddleSeries = haChart.addSeries(LightweightCharts.LineSeries, { color: 'rgba(255, 152, 0, 0.7)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: 'HA BB중단' });
+                    haBollingerBandsLowerSeries = haChart.addSeries(LightweightCharts.LineSeries, { color: 'rgba(76, 175, 80, 0.7)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: 'HA BB하단' });
                 }
                 if (!haStochRsiChart) {
                     haStochRsiChart = LightweightCharts.createChart(haStochRsiChartContainer, { width: haStochRsiChartContainer.clientWidth, height: haStochRsiChartContainer.clientHeight, ...commonStochRsiOptions });
@@ -670,10 +684,20 @@
             if (stochKSeries) stochKSeries.setData(allChartData.regularStochRSI ? allChartData.regularStochRSI.kLine : []);
             if (stochDSeries) stochDSeries.setData(allChartData.regularStochRSI ? allChartData.regularStochRSI.dLine : []);
             
+            // 일반 차트 볼린저 밴드 데이터 설정
+            if (bollingerBandsUpperSeries) bollingerBandsUpperSeries.setData(allChartData.regularBollingerBands ? allChartData.regularBollingerBands.upper : []);
+            if (bollingerBandsMiddleSeries) bollingerBandsMiddleSeries.setData(allChartData.regularBollingerBands ? allChartData.regularBollingerBands.middle : []);
+            if (bollingerBandsLowerSeries) bollingerBandsLowerSeries.setData(allChartData.regularBollingerBands ? allChartData.regularBollingerBands.lower : []);
+
             if (haCandleSeries) haCandleSeries.setData(allChartData.heikinAshiCandles || []);
             if (haEma200Series) haEma200Series.setData(allChartData.heikinAshiEMA200 || []);
             if (haStochKSeries) haStochKSeries.setData(allChartData.heikinAshiStochRSI ? allChartData.heikinAshiStochRSI.kLine : []);
             if (haStochDSeries) haStochDSeries.setData(allChartData.heikinAshiStochRSI ? allChartData.heikinAshiStochRSI.dLine : []);
+
+            // 하이킨아시 차트 볼린저 밴드 데이터 설정
+            if (haBollingerBandsUpperSeries) haBollingerBandsUpperSeries.setData(allChartData.heikinAshiBollingerBands ? allChartData.heikinAshiBollingerBands.upper : []);
+            if (haBollingerBandsMiddleSeries) haBollingerBandsMiddleSeries.setData(allChartData.heikinAshiBollingerBands ? allChartData.heikinAshiBollingerBands.middle : []);
+            if (haBollingerBandsLowerSeries) haBollingerBandsLowerSeries.setData(allChartData.heikinAshiBollingerBands ? allChartData.heikinAshiBollingerBands.lower : []);
 
             if (allChartData.regularCandles && allChartData.regularCandles.length > 0) {
                 const lastCandle = allChartData.regularCandles[allChartData.regularCandles.length - 1];

@@ -224,13 +224,18 @@ app.get('/api/historical-klines', async (req, res) => {
     const heikinAshiRSI = indicators.calculateRSI(heikinAshiCandles, RSI_PERIOD);
     const heikinAshiStochRSI = indicators.calculateStochasticRSI(heikinAshiRSI, STOCH_PERIOD, K_PERIOD, D_PERIOD);
     
+    const regularBollingerBands = indicators.calculateBollingerBands(clientFormatKlines);
+    const heikinAshiBollingerBands = indicators.calculateBollingerBands(heikinAshiCandles);
+
     const responseData = {
       regularCandles: clientFormatKlines,
       regularEMA200: regularEMA, // 이름 일관성 유지 (클라이언트에서 ema200Series로 사용중)
       regularStochRSI: regularStochRSI,
+      regularBollingerBands: regularBollingerBands,
       heikinAshiCandles: heikinAshiCandles,
       heikinAshiEMA200: heikinAshiEMA, // 이름 일관성 유지
-      heikinAshiStochRSI: heikinAshiStochRSI
+      heikinAshiStochRSI: heikinAshiStochRSI,
+      heikinAshiBollingerBands: heikinAshiBollingerBands
     };
 
     const logSuccess = `Successfully fetched and processed ${clientFormatKlines.length} historical klines.`;
@@ -426,6 +431,8 @@ function processAndEmitFullChartData() {
             // StochRSI 등도 필요에 따라 최소 계산 또는 빈 값
             regularStochRSI: { kLine: [], dLine: [] }, 
             heikinAshiStochRSI: { kLine: [], dLine: [] },
+            regularBollingerBands: { upper: [], middle: [], lower: [] },
+            heikinAshiBollingerBands: { upper: [], middle: [], lower: [] },
             strategySignal: { signal: 'DATA_INSUFFICIENT', conditions: {}, timestamp: 0, position: currentPosition }
         };
         uiIo.emit('full_chart_update', initialData);
@@ -442,6 +449,9 @@ function processAndEmitFullChartData() {
     const regularStochRSI = indicators.calculateStochasticRSI(regularRSI, STOCH_PERIOD, K_PERIOD, D_PERIOD);
     const heikinAshiRSI = indicators.calculateRSI(heikinAshiCandles, RSI_PERIOD);
     const heikinAshiStochRSI = indicators.calculateStochasticRSI(heikinAshiRSI, STOCH_PERIOD, K_PERIOD, D_PERIOD);
+
+    const regularBollingerBands = indicators.calculateBollingerBands(currentCandles);
+    const heikinAshiBollingerBands = indicators.calculateBollingerBands(heikinAshiCandles);
 
     // --- 매매 전략 평가 --- (하이킨아시 차트 기준)
     let strategySignal = { signal: 'NO_SIGNAL', conditions: {}, timestamp: 0, position: currentPosition };
@@ -530,9 +540,11 @@ function processAndEmitFullChartData() {
         regularCandles: currentCandles,
         regularEMA200: regularEMA,
         regularStochRSI: regularStochRSI,
+        regularBollingerBands: regularBollingerBands,
         heikinAshiCandles: heikinAshiCandles,
         heikinAshiEMA200: heikinAshiEMA,
         heikinAshiStochRSI: heikinAshiStochRSI,
+        heikinAshiBollingerBands: heikinAshiBollingerBands,
         strategySignal: strategySignal // 전략 신호 객체 추가
     };
     const logEmit = `Emitting 'full_chart_update' with ${currentCandles.length} regular candles and ${heikinAshiCandles.length} HA candles.`;
