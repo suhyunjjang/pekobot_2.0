@@ -303,6 +303,9 @@
     </style>
 </head>
 <body>
+    <div id="connection-status" style="padding: 10px; background-color: #f0f0f0; border-bottom: 1px solid #ccc; text-align: center; font-family: sans-serif;">
+        Order Executor Status: <span id="executor-status-indicator" style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 5px;">⚫</span> <span id="executor-status-text">Checking...</span>
+    </div>
     <div class="charts-wrapper">
         <div class="chart-group">
             <h1>일반 캔들 차트</h1>
@@ -424,7 +427,31 @@
         const clearServerLogBtn = document.getElementById('clear-server-log-btn');
         const MAX_LOG_LINES = 100; // 화면에 표시할 최대 로그 라인 수
 
+        // --- 주문 실행기 상태 표시용 DOM 요소 --- 
+        const executorStatusIndicator = document.getElementById('executor-status-indicator');
+        const executorStatusText = document.getElementById('executor-status-text');
+        // --- 주문 실행기 상태 표시용 DOM 요소 끝 --- 
+
         let isChartReady = false;
+
+        // --- 주문 실행기 연결 상태 처리 --- 
+        socket.on('executor_connection_status', (isConnected) => {
+          console.log('[UI] Received executor_connection_status:', isConnected);
+          if (isConnected) {
+            if (executorStatusIndicator) executorStatusIndicator.style.backgroundColor = '#2ecc71'; // 초록색
+            if (executorStatusIndicator) executorStatusIndicator.textContent = ''; // 아이콘 대신 배경색 사용
+            if (executorStatusText) executorStatusText.textContent = 'Connected';
+          } else {
+            if (executorStatusIndicator) executorStatusIndicator.style.backgroundColor = '#e74c3c'; // 빨간색
+            if (executorStatusIndicator) executorStatusIndicator.textContent = '';
+            if (executorStatusText) executorStatusText.textContent = 'Disconnected';
+          }
+        });
+
+        // 초기 상태 설정
+        if (executorStatusIndicator) executorStatusIndicator.style.backgroundColor = '#f39c12'; // 주황색
+        if (executorStatusText) executorStatusText.textContent = 'Checking...';
+        // --- 주문 실행기 연결 상태 처리 끝 ---
 
         // "로그 대기 중..." 메시지 초기화 로직 수정
         const initialLogMessage = serverLogOutputEl ? serverLogOutputEl.querySelector('p.log-info') : null;
@@ -539,7 +566,7 @@
             layout: {
                         background: { type: 'solid', color: 'hsl(206 48% 15%)' },
                         textColor: 'hsl(210 17% 85%)',
-                    },
+            },
                     grid: { vertLines: { color: 'hsl(206 40% 25%)' }, horzLines: { color: 'hsl(206 40% 25%)' } },
                     crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
                     timeScale: { borderColor: 'hsl(206 40% 25%)', timeVisible: true, secondsVisible: false },
@@ -724,6 +751,8 @@
             await fetchHistoricalData();
             await fetchWalletBalance();
             await fetchTradeHistory(); // 페이지 초기화 시 기본 거래 내역 로드
+            // 페이지 로드 시 서버에 현재 상태 요청 (server.js에서 연결 시 바로 보내주므로 필수는 아님)
+            // socket.emit('request_initial_executor_status'); 
         }
 
         initializePage();

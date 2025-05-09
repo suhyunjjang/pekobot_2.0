@@ -1,19 +1,156 @@
 const express = require('express');
 const http = require('http');
-const WebSocket = require('ws');
 const path = require('path');
-const socketIo = require('socket.io');
+const socketIoClient = require('socket.io-client'); // socket.io 대신 socket.io-client
 const axios = require('axios');
 const indicators = require('./utils/indicatorCalculator'); // 계산 모듈 가져오기
 const crypto = require('crypto');
 require('dotenv').config();
 
+// --- 설정 ---
+const ORDER_EXECUTOR_URL = 'http://158.247.227.13:5000'; // order-executor.js의 고정 IP 및 포트
+const PORT = process.env.PORT || 3000; // 이 서버(server.js)가 리슨할 포트 (웹 UI용 또는 다른 API용)
+
+const PING_TO_EXECUTOR_INTERVAL = 15000; // 주문 실행기로 Ping 보내는 주기
+const PONG_FROM_EXECUTOR_TIMEOUT = 10000; // 주문 실행기로부터 Pong 응답 대기 시간
+// --- 설정 끝 ---
+
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server);
+// const io = socketIo(server, ...); // 기존 UI용 Socket.IO 서버는 유지하거나, 아래 executorSocket과 별개로 관리
+// UI용 Socket.IO 서버가 필요하다면 아래와 같이 초기화합니다.
+const { Server: SocketIOServer } = require('socket.io');
+const uiIo = new SocketIOServer(server, { // 변수명 변경 uiIo
+    cors: {
+        origin: "*", 
+        methods: ["GET", "POST"]
+    }
+});
 
-// 정적 파일 제공
+let executorSocket = null; 
+let isConnectedToExecutor = false;
+let lastPongFromExecutor = Date.now();
+let pingToExecutorIntervalId = null;
+
+// 정적 파일 제공 (public 폴더 - 기존 UI용)
 app.use(express.static(path.join(__dirname, 'public')));
+
+console.log(`[INFO] server.js (매매 전략 서버) process.env.PORT: ${process.env.PORT}, effective PORT: ${PORT}`);
+
+function updateExecutorConnectionStatusForUI() {
+    if (uiIo) { // uiIo가 초기화되었는지 확인
+        uiIo.emit('executor_connection_status', isConnectedToExecutor);
+        console.log(`[UI_EMIT] Sent executor_connection_status: ${isConnectedToExecutor}`);
+    }
+}
+
+function connectToOrderExecutor() {
+    if (executorSocket && executorSocket.connected) {
+        console.log('[INFO] Already connected to Order Executor.');
+        return;
+    }
+    if (executorSocket) {
+        executorSocket.disconnect(); // 이전 소켓 정리
+        executorSocket.removeAllListeners(); // 이벤트 리스너도 정리
+    }
+
+    console.log(`[INFO] Attempting to connect to Order Executor at ${ORDER_EXECUTOR_URL}`);
+    executorSocket = socketIoClient(ORDER_EXECUTOR_URL, {
+        reconnectionAttempts: Infinity, // 계속 재연결 시도
+        timeout: 20000, 
+        // transports: ['websocket'], // 필요시
+    });
+
+    executorSocket.on('connect', () => {
+        isConnectedToExecutor = true;
+        lastPongFromExecutor = Date.now();
+        console.log(`[INFO] Connected to Order Executor: ${executorSocket.id}`);
+        startPingToExecutor();
+        updateExecutorConnectionStatusForUI(); // 상태 변경 시 UI 업데이트
+    });
+
+    executorSocket.on('disconnect', (reason) => {
+        isConnectedToExecutor = false;
+        console.warn(`[WARN] Disconnected from Order Executor: ${reason}`);
+        stopPingToExecutor();
+        updateExecutorConnectionStatusForUI(); // 상태 변경 시 UI 업데이트
+        // 재연결은 클라이언트 라이브러리가 자동으로 시도 (reconnectionAttempts: Infinity)
+        // 필요시, 여기서 추가적인 로직 (예: 특정 시간 후 강제 재시도)을 넣을 수 있으나, 보통은 자동 재연결에 맡김.
+    });
+
+    executorSocket.on('connect_error', (error) => {
+        isConnectedToExecutor = false; // 명시적으로 false
+        console.error(`[ERROR] Failed to connect to Order Executor: ${error.message}`);
+        stopPingToExecutor();
+        updateExecutorConnectionStatusForUI(); // 상태 변경 시 UI 업데이트
+    });
+    
+    executorSocket.on('pong_to_client', (data) => { 
+        lastPongFromExecutor = Date.now();
+        // console.log('[DEBUG] Pong received from order-executor (server).', data);
+    });
+
+    executorSocket.on('order_execution_log', (logData) => { 
+        console.log('[EXECUTOR LOG]', logData.message, logData.details || '');
+        uiIo.emit('server-log', { 
+            type: logData.type || 'info',
+            source: 'OrderExecutor', 
+            message: logData.message, 
+            details: logData.details 
+        });
+        if (executorSocket && logData.message) { 
+            executorSocket.emit('order_execution_log_ack', { receivedMessage: logData.message });
+        }
+    });
+    
+    executorSocket.on('reconnect_attempt', (attemptNumber) => {
+        console.log(`[INFO] Attempting to reconnect to Order Executor... (Attempt: ${attemptNumber})`);
+        stopPingToExecutor();
+        // 재연결 시도 중에는 isConnectedToExecutor가 false일 수 있으므로, UI 업데이트는 reconnect 성공/실패 시에만.
+    });
+    executorSocket.on('reconnect', (attemptNumber) => {
+        isConnectedToExecutor = true;
+        lastPongFromExecutor = Date.now();
+        console.log(`[INFO] Reconnected to Order Executor after ${attemptNumber} attempts.`);
+        startPingToExecutor();
+        updateExecutorConnectionStatusForUI(); // 상태 변경 시 UI 업데이트
+    });
+    executorSocket.on('reconnect_error', (error) => {
+        // isConnectedToExecutor는 이미 false이거나 connect_error에서 false로 설정됨
+        console.error(`[ERROR] Failed to reconnect to Order Executor: ${error.message}`);
+        stopPingToExecutor();
+        updateExecutorConnectionStatusForUI(); // 상태 변경 시 UI 업데이트
+    });
+    executorSocket.on('reconnect_failed', () => {
+        isConnectedToExecutor = false;
+        console.error('[ERROR] All reconnection attempts to Order Executor failed. Will keep trying due to reconnectionAttempts:Infinity.');
+        stopPingToExecutor();
+        updateExecutorConnectionStatusForUI(); // 상태 변경 시 UI 업데이트
+    });
+}
+
+function startPingToExecutor() {
+    if (pingToExecutorIntervalId) clearInterval(pingToExecutorIntervalId);
+    pingToExecutorIntervalId = setInterval(() => {
+        if (isConnectedToExecutor && executorSocket) {
+            if (Date.now() - lastPongFromExecutor > PING_TO_EXECUTOR_INTERVAL + PONG_FROM_EXECUTOR_TIMEOUT) {
+                console.warn('[WARN] No pong from Order Executor for too long. Disconnecting to trigger reconnect.');
+                executorSocket.disconnect(); // 재연결 유도
+            } else {
+                executorSocket.emit('ping_from_client', { timestamp: Date.now(), source: 'server.js' });
+            }
+        }
+    }, PING_TO_EXECUTOR_INTERVAL);
+    console.log('[INFO] Ping interval to Order Executor started.');
+}
+
+function stopPingToExecutor() {
+    if (pingToExecutorIntervalId) {
+        clearInterval(pingToExecutorIntervalId);
+        pingToExecutorIntervalId = null;
+        console.log('[INFO] Ping interval to Order Executor stopped.');
+    }
+}
 
 // --- 인메모리 캔들 데이터 및 지표 계산 설정 ---
 let recentCandles = []; // 서버 메모리에 최근 캔들 데이터를 저장할 배열
@@ -29,7 +166,7 @@ let currentPosition = 'NONE'; // 현재 포지션 상태 (NONE, LONG, SHORT)
 app.get('/api/historical-klines', async (req, res) => {
   const logMessageStart = 'Request received for /api/historical-klines';
   console.log(logMessageStart);
-  io.emit('server-log', { type: 'info', source: '/api/historical-klines', message: logMessageStart });
+  uiIo.emit('server-log', { type: 'info', source: '/api/historical-klines', message: logMessageStart });
 
   try {
     const symbol = 'BTCUSDT';
@@ -38,7 +175,7 @@ app.get('/api/historical-klines', async (req, res) => {
 
     const logFetch = `Fetching historical klines: ${symbol}, ${interval}, limit ${limit}`;
     console.log(logFetch);
-    io.emit('server-log', { type: 'info', source: '/api/historical-klines', message: logFetch });
+    uiIo.emit('server-log', { type: 'info', source: '/api/historical-klines', message: logFetch });
 
     const response = await axios.get('https://fapi.binance.com/fapi/v1/klines', {
       params: { symbol: symbol, interval: interval, limit: limit }
@@ -68,7 +205,8 @@ app.get('/api/historical-klines', async (req, res) => {
       high: parseFloat(k[2]),
       low: parseFloat(k[3]),
       close: parseFloat(k[4]),
-      volume: parseFloat(k[5])
+      volume: parseFloat(k[5]),
+      symbol: symbol
     }));
 
     // 서버 메모리의 recentCandles도 이 데이터로 초기화 (선택적, 여기서는 API 호출 시마다 최신으로 덮어쓰기)
@@ -97,14 +235,14 @@ app.get('/api/historical-klines', async (req, res) => {
 
     const logSuccess = `Successfully fetched and processed ${clientFormatKlines.length} historical klines.`;
     console.log(logSuccess);
-    io.emit('server-log', { type: 'success', source: '/api/historical-klines', message: logSuccess, details: { count: clientFormatKlines.length } });
+    uiIo.emit('server-log', { type: 'success', source: '/api/historical-klines', message: logSuccess, details: { count: clientFormatKlines.length } });
 
     res.json(responseData);
   } catch (error) {
     const errorMessage = error.response ? JSON.stringify(error.response.data) : error.message;
     const logError = `Error in /api/historical-klines: ${errorMessage}`;
     console.error(logError);
-    io.emit('server-log', { type: 'error', source: '/api/historical-klines', message: logError, details: { errorData: errorMessage } });
+    uiIo.emit('server-log', { type: 'error', source: '/api/historical-klines', message: logError, details: { errorData: errorMessage } });
     res.status(500).json({ message: '과거 캔들 데이터를 가져오는 데 실패했습니다.' });
   }
 });
@@ -113,7 +251,7 @@ app.get('/api/historical-klines', async (req, res) => {
 app.get('/api/futures-balance', async (req, res) => {
     const logMessageStart = 'Request received for /api/futures-balance';
     console.log(logMessageStart);
-    io.emit('server-log', { type: 'info', source: '/api/futures-balance', message: logMessageStart });
+    uiIo.emit('server-log', { type: 'info', source: '/api/futures-balance', message: logMessageStart });
 
     const apiKey = process.env.BINANCE_API_KEY;
     const apiSecret = process.env.BINANCE_API_SECRET;
@@ -130,7 +268,7 @@ app.get('/api/futures-balance', async (req, res) => {
     try {
         const logFetch = 'Fetching Binance Futures balance via /api/futures-balance (direct axios call)...';
         console.log(logFetch);
-        io.emit('server-log', { type: 'info', source: '/api/futures-balance', message: logFetch });
+        uiIo.emit('server-log', { type: 'info', source: '/api/futures-balance', message: logFetch });
 
         const response = await axios.get('https://fapi.binance.com/fapi/v2/balance', { // v2 잔고 엔드포인트
             headers: { 'X-MBX-APIKEY': apiKey },
@@ -154,7 +292,7 @@ app.get('/api/futures-balance', async (req, res) => {
         
         const logSuccess = `Successfully fetched futures balance (direct): USDT: ${usdtAvailableBalance.toFixed(2)}, Total: ${totalWalletBalanceInUsdt.toFixed(2)}`;
         console.log(logSuccess);
-        io.emit('server-log', { type: 'success', source: '/api/futures-balance', message: logSuccess, details: { usdtBalance: usdtAvailableBalance, totalWalletBalanceUsdt: totalWalletBalanceInUsdt } });
+        uiIo.emit('server-log', { type: 'success', source: '/api/futures-balance', message: logSuccess, details: { usdtBalance: usdtAvailableBalance, totalWalletBalanceUsdt: totalWalletBalanceInUsdt } });
 
         res.json({
             usdtBalance: usdtAvailableBalance.toFixed(2),
@@ -165,7 +303,7 @@ app.get('/api/futures-balance', async (req, res) => {
         const errorMessage = error.response ? JSON.stringify(error.response.data) : error.message;
         const logError = `Error in /api/futures-balance endpoint (direct): ${errorMessage}`;
         console.error(logError);
-        io.emit('server-log', { type: 'error', source: '/api/futures-balance', message: logError, details: { errorData: errorMessage } });
+        uiIo.emit('server-log', { type: 'error', source: '/api/futures-balance', message: logError, details: { errorData: errorMessage } });
         res.status(error.response ? error.response.status : 500).json({
             message: 'Failed to fetch futures balance from server (direct)',
             details: errorMessage
@@ -179,7 +317,7 @@ app.get('/api/trade-history', async (req, res) => {
     const limit = parseInt(req.query.limit) || 50;
     const logMessageStart = `Request received for /api/trade-history (Symbol: ${symbol}, Limit: ${limit})`;
     console.log(logMessageStart);
-    io.emit('server-log', { type: 'info', source: '/api/trade-history', message: logMessageStart, details: { symbol, limit } });
+    uiIo.emit('server-log', { type: 'info', source: '/api/trade-history', message: logMessageStart, details: { symbol, limit } });
 
     const apiKey = process.env.BINANCE_API_KEY;
     const apiSecret = process.env.BINANCE_API_SECRET;
@@ -196,7 +334,7 @@ app.get('/api/trade-history', async (req, res) => {
     try {
         const logFetch = `Fetching trade history for ${symbol} via /api/trade-history...`;
         console.log(logFetch);
-        io.emit('server-log', { type: 'info', source: '/api/trade-history', message: logFetch });
+        uiIo.emit('server-log', { type: 'info', source: '/api/trade-history', message: logFetch });
 
         const response = await axios.get('https://fapi.binance.com/fapi/v1/userTrades', {
             headers: { 'X-MBX-APIKEY': apiKey },
@@ -228,14 +366,14 @@ app.get('/api/trade-history', async (req, res) => {
         
         const logSuccess = `Successfully fetched and formatted ${tradesFormatted.length} trades for ${symbol}.`;
         console.log(logSuccess);
-        io.emit('server-log', { type: 'success', source: '/api/trade-history', message: logSuccess, details: { count: tradesFormatted.length, symbol } });
+        uiIo.emit('server-log', { type: 'success', source: '/api/trade-history', message: logSuccess, details: { count: tradesFormatted.length, symbol } });
         res.json(tradesFormatted);
 
     } catch (error) {
         const errorMessage = error.response ? JSON.stringify(error.response.data) : error.message;
         const logError = `Error in /api/trade-history endpoint for ${symbol}: ${errorMessage}`;
         console.error(logError);
-        io.emit('server-log', { type: 'error', source: '/api/trade-history', message: logError, details: { errorData: errorMessage, symbol } });
+        uiIo.emit('server-log', { type: 'error', source: '/api/trade-history', message: logError, details: { errorData: errorMessage, symbol } });
         res.status(error.response ? error.response.status : 500).json({
             message: `Failed to fetch trade history for ${symbol}`,
             details: errorMessage
@@ -244,23 +382,39 @@ app.get('/api/trade-history', async (req, res) => {
 });
 
 // 바이낸스 웹소켓 연결 (비트코인 선물)
+const WebSocket = require('ws');
 const binanceWs = new WebSocket('wss://fstream.binance.com/ws/btcusdt@kline_4h');
 
 // 클라이언트 연결시 이벤트
-io.on('connection', (socket) => {
-  const logConnect = `Client connected: ${socket.id}`;
+uiIo.on('connection', (socket) => { // 웹 UI 클라이언트용 연결
+  const logConnect = `Web UI Client connected: ${socket.id}`;
   console.log(logConnect);
-  io.emit('server-log', { type: 'info', source: 'socket.io', message: logConnect, details: { clientId: socket.id } });
+  uiIo.emit('server-log', { type: 'info', source: 'socket.io-ui', message: logConnect, details: { clientId: socket.id } });
   
+  // 새로운 UI 클라이언트 연결 시 현재 주문 실행기 연결 상태 즉시 전송
+  socket.emit('executor_connection_status', isConnectedToExecutor);
+  console.log(`[UI_EMIT] Sent initial executor_connection_status: ${isConnectedToExecutor} to client ${socket.id}`);
+
   socket.on('disconnect', () => {
-    const logDisconnect = `Client disconnected: ${socket.id}`;
-    console.log(logDisconnect);
-    io.emit('server-log', { type: 'info', source: 'socket.io', message: logDisconnect, details: { clientId: socket.id } });
+    console.log(`Web UI Client disconnected: ${socket.id}`);
+    uiIo.emit('server-log', { type: 'info', source: 'socket.io-ui', message: `Web UI Client disconnected: ${socket.id}` });
   });
+
+  // Ping 요청 처리
+  socket.on('ping_from_client', (data) => {
+    // console.log(`[INFO] Ping received from client ${socket.id} with data:`, data);
+    socket.emit('pong_from_server', { 
+      serverTimestamp: Date.now(),
+      clientData: data // 클라이언트가 보낸 데이터를 그대로 다시 보내줄 수 있음
+    });
+  });
+
+  // 여기에 다른 socket.on 이벤트 핸들러들이 올 수 있습니다.
+  // 예: socket.on('order_executed', (orderData) => { ... });
 });
 
 // 모든 클라이언트에게 전체 계산된 차트 데이터를 전송하는 함수
-function processAndEmitFullChartData(socketEmitter) {
+function processAndEmitFullChartData() {
     if (recentCandles.length < 2) { // 최소 2개 캔들이 있어야 이전 값 비교 가능
         // 초기 데이터가 부족할 경우, 기본 차트 데이터만 전송하거나 빈 신호 전송
         const initialData = {
@@ -274,7 +428,7 @@ function processAndEmitFullChartData(socketEmitter) {
             heikinAshiStochRSI: { kLine: [], dLine: [] },
             strategySignal: { signal: 'DATA_INSUFFICIENT', conditions: {}, timestamp: 0, position: currentPosition }
         };
-        socketEmitter.emit('full_chart_update', initialData);
+        uiIo.emit('full_chart_update', initialData);
         return;
     }
 
@@ -315,7 +469,7 @@ function processAndEmitFullChartData(socketEmitter) {
                 strategySignal.signal = 'LONG_ENTRY';
                 const signalTime = new Date(latestHaCandle.time * 1000).toLocaleString('ko-KR');
                 const currentSymbol = latestOriginalCandle.symbol || 'BTCUSDT'; // recentCandles에서 전달된 심볼 사용
-                console.log(`매수 진입 신호 발생: Time=${signalTime}, Symbol=${currentSymbol}`);
+                console.log(`[SIGNAL] LONG_ENTRY 신호 발생: Time=${signalTime}, Symbol=${currentSymbol}`);
                 
                 const tradeSignalData = {
                     symbol: currentSymbol,
@@ -327,14 +481,21 @@ function processAndEmitFullChartData(socketEmitter) {
                     timestamp: latestHaCandle.time,
                     signalType: strategySignal.signal
                 };
-                io.emit('trade_signal', tradeSignalData);
-                io.emit('server-log', {type: 'success', source: 'StrategyLogic', message: `BUY Signal Emitted`, details: tradeSignalData});
+
+                if (isConnectedToExecutor && executorSocket) {
+                    console.log(`[INFO] Sending trade_signal to Order Executor:`, tradeSignalData);
+                    executorSocket.emit('trade_signal', tradeSignalData);
+                    uiIo.emit('server-log', {type: 'success', source: 'StrategyLogic', message: `BUY Signal Sent to Executor`, details: tradeSignalData});
+                } else {
+                    console.warn('[WARN] Cannot send trade_signal: Not connected to Order Executor.');
+                    uiIo.emit('server-log', {type: 'warning', source: 'StrategyLogic', message: `Cannot send BUY signal: Executor not connected.`, details: tradeSignalData});
+                }
 
             } else if (trendConditionShort && directionConditionShort && oscillatorConditionShort) {
                 strategySignal.signal = 'SHORT_ENTRY';
                 const signalTime = new Date(latestHaCandle.time * 1000).toLocaleString('ko-KR');
                 const currentSymbol = latestOriginalCandle.symbol || 'BTCUSDT'; // recentCandles에서 전달된 심볼 사용
-                console.log(`매도 진입 신호 발생: Time=${signalTime}, Symbol=${currentSymbol}`);
+                console.log(`[SIGNAL] SHORT_ENTRY 신호 발생: Time=${signalTime}, Symbol=${currentSymbol}`);
                 
                 const tradeSignalData = {
                     symbol: currentSymbol,
@@ -346,8 +507,15 @@ function processAndEmitFullChartData(socketEmitter) {
                     timestamp: latestHaCandle.time,
                     signalType: strategySignal.signal
                 };
-                io.emit('trade_signal', tradeSignalData);
-                io.emit('server-log', {type: 'success', source: 'StrategyLogic', message: `SELL Signal Emitted`, details: tradeSignalData});
+
+                if (isConnectedToExecutor && executorSocket) {
+                    console.log(`[INFO] Sending trade_signal to Order Executor:`, tradeSignalData);
+                    executorSocket.emit('trade_signal', tradeSignalData);
+                    uiIo.emit('server-log', {type: 'success', source: 'StrategyLogic', message: `SELL Signal Sent to Executor`, details: tradeSignalData});
+                } else {
+                    console.warn('[WARN] Cannot send trade_signal: Not connected to Order Executor.');
+                    uiIo.emit('server-log', {type: 'warning', source: 'StrategyLogic', message: `Cannot send SELL signal: Executor not connected.`, details: tradeSignalData});
+                }
             }
         }
         // (참고) 포지션 청산 및 상태 변경 로직은 여기에 추가될 수 있음
@@ -373,14 +541,14 @@ function processAndEmitFullChartData(socketEmitter) {
     // console.log(logEmit); // 이 로그는 너무 빈번할 수 있으므로 주석 처리 또는 조건부로 emit
     // io.emit('server-log', { type: 'debug', source: 'processAndEmitFullChartData', message: logEmit, details: { regularCount: currentCandles.length, haCount: heikinAshiCandles.length } });
 
-    socketEmitter.emit('full_chart_update', allCalculatedData);
+    uiIo.emit('full_chart_update', allCalculatedData);
 }
 
 // 바이낸스 웹소켓 메시지 처리
 binanceWs.on('message', (data) => {
   try {
     const parsedData = JSON.parse(data);
-    if (parsedData.k) { 
+    if (parsedData.k) {
       const kline = parsedData.k;
       const logWsReceive = `Received kline update from WebSocket for ${kline.s} at ${new Date(kline.t).toLocaleTimeString()}`;
       // console.log(logWsReceive); // 이 로그는 너무 빈번할 수 있으므로 주석 처리 또는 조건부로 emit
@@ -410,13 +578,13 @@ binanceWs.on('message', (data) => {
       }
 
       // 업데이트된 recentCandles 기반으로 모든 지표 재계산 후 클라이언트에 전송
-      processAndEmitFullChartData(io);
+      processAndEmitFullChartData();
     }
   } catch (error) {
     const errorMessage = error.message;
     const logWsError = `Error processing WebSocket message: ${errorMessage}`;
     console.error(logWsError);
-    io.emit('server-log', { type: 'error', source: 'WebSocket', message: logWsError, details: { errorData: errorMessage } });
+    uiIo.emit('server-log', { type: 'error', source: 'BinanceWS', message: logWsError, details: { errorData: errorMessage } });
   }
 });
 
@@ -424,14 +592,43 @@ binanceWs.on('error', (error) => {
   const errorMessage = error.message;
   const logWsConnError = `WebSocket connection error: ${errorMessage}`;
   console.error(logWsConnError);
-  io.emit('server-log', { type: 'error', source: 'WebSocket', message: logWsConnError, details: { errorData: errorMessage } });
+  uiIo.emit('server-log', { type: 'error', source: 'BinanceWS', message: logWsConnError, details: { errorData: errorMessage } });
 });
 
 // 서버 시작
-const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  const logServerStart = `Server listening on port ${PORT}`;
-  console.log(logServerStart);
-  io.emit('server-log', { type: 'info', source: 'server', message: logServerStart, details: { port: PORT } });
-  // fetchKlinesAndProcess(); // 이 함수는 API 엔드포인트 호출 시 또는 웹소켓 연결 시 데이터 가져오므로 중복 호출 방지
+  console.log(`[INFO] server.js (매매 전략 서버) listening on port ${PORT}`);
+  uiIo.emit('server-log', { type: 'info', source: 'server.js', message: `Server listening on port ${PORT}` });
+  connectToOrderExecutor(); // 서버 시작 후 주문 실행기에 연결 시도
+}); 
+
+// 프로세스 종료 처리
+function gracefulShutdownServer() {
+    stopPingToExecutor();
+    if (executorSocket) {
+        console.log('[INFO] Disconnecting from Order Executor before shutdown...');
+        executorSocket.disconnect();
+    }
+    binanceWs.close(); // 바이낸스 웹소켓도 닫기
+    uiIo.close(() => { // UI용 Socket.IO 서버 닫기
+        console.log('[INFO] UI Socket.IO server closed.');
+        server.close(() => { // HTTP 서버 닫기
+            console.log('[INFO] HTTP server closed. Exiting server.js.');
+            process.exit(0);
+        });
+    });
+    setTimeout(() => {
+        console.error('[ERROR] Could not close connections in time, forcefully shutting down server.js');
+        process.exit(1);
+    }, 10000); // 10초 대기
+}
+
+process.on('SIGINT', gracefulShutdownServer);
+process.on('SIGTERM', gracefulShutdownServer);
+process.on('uncaughtException', (err) => {
+    console.error('[FATAL] Uncaught Exception in server.js:', err);
+    // 여기서도 gracefulShutdownServer를 시도하거나, 바로 종료할 수 있습니다.
+    // uiIo.emit('server-log', { type: 'fatal', source: 'server.js', message: `Uncaught Exception: ${err.message}` });
+    // gracefulShutdownServer(); // 혹은 바로 process.exit(1)
+    process.exit(1);
 }); 
