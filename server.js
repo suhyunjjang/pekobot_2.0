@@ -456,16 +456,14 @@ function processAndEmitFullChartData() {
         strategySignal.timestamp = latestHaCandle.time;
 
         // 조건 평가
-        const trendConditionLong = latestHaCandle.close > latestHaEMA.value;
         const directionConditionLong = latestHaCandle.close > latestHaCandle.open;
         const oscillatorConditionLong = prevHaStochK <= 20 && currentHaStochK > 20;
 
-        const trendConditionShort = latestHaCandle.close < latestHaEMA.value;
         const directionConditionShort = latestHaCandle.close < latestHaCandle.open;
         const oscillatorConditionShort = prevHaStochK >= 80 && currentHaStochK < 80;
 
         if (currentPosition === 'NONE') { // 현재 포지션이 없을 때만 진입 신호 확인
-            if (trendConditionLong && directionConditionLong && oscillatorConditionLong) {
+            if (directionConditionLong && oscillatorConditionLong) {
                 strategySignal.signal = 'LONG_ENTRY';
                 const signalTime = new Date(latestHaCandle.time * 1000).toLocaleString('ko-KR');
                 const currentSymbol = latestOriginalCandle.symbol || 'BTCUSDT'; // recentCandles에서 전달된 심볼 사용
@@ -491,7 +489,7 @@ function processAndEmitFullChartData() {
                     uiIo.emit('server-log', {type: 'warning', source: 'StrategyLogic', message: `Cannot send BUY signal: Executor not connected.`, details: tradeSignalData});
                 }
 
-            } else if (trendConditionShort && directionConditionShort && oscillatorConditionShort) {
+            } else if (directionConditionShort && oscillatorConditionShort) {
                 strategySignal.signal = 'SHORT_ENTRY';
                 const signalTime = new Date(latestHaCandle.time * 1000).toLocaleString('ko-KR');
                 const currentSymbol = latestOriginalCandle.symbol || 'BTCUSDT'; // recentCandles에서 전달된 심볼 사용
@@ -522,8 +520,8 @@ function processAndEmitFullChartData() {
         // 예: if (currentPosition === 'LONG' && 반대신호_또는_청산조건) { currentPosition = 'NONE'; strategySignal.signal = 'LONG_EXIT'; }
 
         strategySignal.conditions = {
-            long: { trend: trendConditionLong, direction: directionConditionLong, oscillator: oscillatorConditionLong },
-            short: { trend: trendConditionShort, direction: directionConditionShort, oscillator: oscillatorConditionShort }
+            long: { direction: directionConditionLong, oscillator: oscillatorConditionLong },
+            short: { direction: directionConditionShort, oscillator: oscillatorConditionShort }
         };
     }
     // --- 매매 전략 평가 끝 ---
