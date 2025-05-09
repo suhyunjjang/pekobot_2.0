@@ -339,21 +339,21 @@
             <ul>
                 <li>매수 조건:</li>
                 <li>&nbsp;&nbsp;추세 (HA종가 &gt; EMA200): <span id="ha-cond-long-trend">-</span></li>
-                <li>&nbsp;&nbsp;방향 (HA양봉): <span id="ha-cond-long-direction">-</span></li>
-                <li>&nbsp;&nbsp;StochRSI (20 상향돌파): <span id="ha-cond-long-oscillator">-</span></li>
+                <li>&nbsp;&nbsp;StochRSI (K&D ≤ 20): <span id="ha-cond-long-oscillator">-</span></li>
+                <li>&nbsp;&nbsp;볼린저하단 (HA종가 &lt;= BB하단): <span id="ha-cond-long-bollinger">-</span></li> 
             </ul>
             <ul>
                 <li>매도 조건:</li>
                 <li>&nbsp;&nbsp;추세 (HA종가 &lt; EMA200): <span id="ha-cond-short-trend">-</span></li>
-                <li>&nbsp;&nbsp;방향 (HA음봉): <span id="ha-cond-short-direction">-</span></li>
-                <li>&nbsp;&nbsp;StochRSI (80 하향돌파): <span id="ha-cond-short-oscillator">-</span></li>
+                <li>&nbsp;&nbsp;StochRSI (K&D ≥ 80): <span id="ha-cond-short-oscillator">-</span></li>
+                <li>&nbsp;&nbsp;볼린저상단 (HA종가 &gt;= BB상단): <span id="ha-cond-short-bollinger">-</span></li> 
             </ul>
         </div>
         <div class="trade-history info-card">
             <h4>최근 거래 내역</h4>
             <div class="trade-history-controls">
                 <label for="trade-symbol">심볼:</label>
-                <input type="text" id="trade-symbol" value="BTCUSDT">
+                <input type="text" id="trade-symbol" value="XRPUSDT">
                 <label for="trade-limit">개수:</label>
                 <input type="number" id="trade-limit" value="15" min="1" max="1000">
                 <button id="fetch-trades-btn">조회</button>
@@ -410,11 +410,11 @@
         const haSignalTypeEl = document.getElementById('ha-signal-type');
         const haSignalTimeEl = document.getElementById('ha-signal-time');
         const haCondLongTrendEl = document.getElementById('ha-cond-long-trend');
-        const haCondLongDirectionEl = document.getElementById('ha-cond-long-direction');
         const haCondLongOscillatorEl = document.getElementById('ha-cond-long-oscillator');
+        const haCondLongBollingerEl = document.getElementById('ha-cond-long-bollinger');
         const haCondShortTrendEl = document.getElementById('ha-cond-short-trend');
-        const haCondShortDirectionEl = document.getElementById('ha-cond-short-direction');
         const haCondShortOscillatorEl = document.getElementById('ha-cond-short-oscillator');
+        const haCondShortBollingerEl = document.getElementById('ha-cond-short-bollinger');
 
         const balanceUsdtEl = document.getElementById('balance-usdt');
         const balanceTotalUsdtEl = document.getElementById('balance-total-usdt');
@@ -574,7 +574,11 @@
                     grid: { vertLines: { color: 'hsl(206 40% 25%)' }, horzLines: { color: 'hsl(206 40% 25%)' } },
                     crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
                     timeScale: { borderColor: 'hsl(206 40% 25%)', timeVisible: true, secondsVisible: false },
-                    rightPriceScale: { borderColor: 'hsl(206 40% 25%)' }
+                    rightPriceScale: { 
+                        borderColor: 'hsl(206 40% 25%)',
+                        precision: 4, 
+                        minMove: 0.0001 
+                    }
                 };
                 const commonStochRsiOptions = {
                     layout: {
@@ -588,13 +592,27 @@
 
                 if (!chart) {
                     chart = LightweightCharts.createChart(chartContainer, { width: chartContainer.clientWidth, height: chartContainer.clientHeight, ...commonChartOptions });
-                    candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, { upColor: 'hsl(145 44% 51%)', downColor: 'hsl(0 72% 57%)', borderDownColor: 'hsl(0 72% 57%)', borderUpColor: 'hsl(145 44% 51%)', wickDownColor: 'hsl(0 72% 57%)', wickUpColor: 'hsl(145 44% 51%)' });
-                    ema200Series = chart.addSeries(LightweightCharts.LineSeries, { color: 'hsl(220 70% 50%)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false });
+                    candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, { 
+                        upColor: 'hsl(145 44% 51%)', 
+                        downColor: 'hsl(0 72% 57%)', 
+                        borderDownColor: 'hsl(0 72% 57%)', 
+                        borderUpColor: 'hsl(145 44% 51%)', 
+                        wickDownColor: 'hsl(0 72% 57%)', 
+                        wickUpColor: 'hsl(145 44% 51%)',
+                        priceFormat: { type: 'price', precision: 4, minMove: 0.0001 }
+                    });
+                    ema200Series = chart.addSeries(LightweightCharts.LineSeries, { 
+                        color: 'hsl(220 70% 50%)', 
+                        lineWidth: 1, 
+                        lastValueVisible: false, 
+                        priceLineVisible: false,
+                        priceFormat: { type: 'price', precision: 4 }
+                    });
                     
                     // 일반 차트 볼린저 밴드 시리즈 추가
-                    bollingerBandsUpperSeries = chart.addSeries(LightweightCharts.LineSeries, { color: 'rgba(255, 82, 82, 0.7)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: 'BB상단' });
-                    bollingerBandsMiddleSeries = chart.addSeries(LightweightCharts.LineSeries, { color: 'rgba(255, 152, 0, 0.7)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: 'BB중단' });
-                    bollingerBandsLowerSeries = chart.addSeries(LightweightCharts.LineSeries, { color: 'rgba(76, 175, 80, 0.7)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: 'BB하단' });
+                    bollingerBandsUpperSeries = chart.addSeries(LightweightCharts.LineSeries, { color: 'rgba(255, 82, 82, 0.7)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: 'BB상단', priceFormat: { type: 'price', precision: 4 } });
+                    bollingerBandsMiddleSeries = chart.addSeries(LightweightCharts.LineSeries, { color: 'rgba(255, 152, 0, 0.7)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: 'BB중단', priceFormat: { type: 'price', precision: 4 } });
+                    bollingerBandsLowerSeries = chart.addSeries(LightweightCharts.LineSeries, { color: 'rgba(76, 175, 80, 0.7)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: 'BB하단', priceFormat: { type: 'price', precision: 4 } });
                 }
                 if (!stochRsiChart) {
                     stochRsiChart = LightweightCharts.createChart(stochRsiChartContainer, { width: stochRsiChartContainer.clientWidth, height: stochRsiChartContainer.clientHeight, ...commonStochRsiOptions });
@@ -605,13 +623,27 @@
                 }
                 if (!haChart) {
                     haChart = LightweightCharts.createChart(haChartContainer, { width: haChartContainer.clientWidth, height: haChartContainer.clientHeight, ...commonChartOptions });
-                    haCandleSeries = haChart.addSeries(LightweightCharts.CandlestickSeries, { upColor: 'hsl(145 44% 51%)', downColor: 'hsl(0 72% 57%)', borderDownColor: 'hsl(0 72% 57%)', borderUpColor: 'hsl(145 44% 51%)', wickDownColor: 'hsl(0 72% 57%)', wickUpColor: 'hsl(145 44% 51%)' });
-                    haEma200Series = haChart.addSeries(LightweightCharts.LineSeries, { color: 'hsl(220 70% 50%)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false });
+                    haCandleSeries = haChart.addSeries(LightweightCharts.CandlestickSeries, { 
+                        upColor: 'hsl(145 44% 51%)', 
+                        downColor: 'hsl(0 72% 57%)', 
+                        borderDownColor: 'hsl(0 72% 57%)', 
+                        borderUpColor: 'hsl(145 44% 51%)', 
+                        wickDownColor: 'hsl(0 72% 57%)', 
+                        wickUpColor: 'hsl(145 44% 51%)',
+                        priceFormat: { type: 'price', precision: 4, minMove: 0.0001 }
+                    });
+                    haEma200Series = haChart.addSeries(LightweightCharts.LineSeries, { 
+                        color: 'hsl(220 70% 50%)', 
+                        lineWidth: 1, 
+                        lastValueVisible: false, 
+                        priceLineVisible: false,
+                        priceFormat: { type: 'price', precision: 4 }
+                    });
 
                     // 하이킨아시 차트 볼린저 밴드 시리즈 추가
-                    haBollingerBandsUpperSeries = haChart.addSeries(LightweightCharts.LineSeries, { color: 'rgba(255, 82, 82, 0.7)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: 'HA BB상단' });
-                    haBollingerBandsMiddleSeries = haChart.addSeries(LightweightCharts.LineSeries, { color: 'rgba(255, 152, 0, 0.7)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: 'HA BB중단' });
-                    haBollingerBandsLowerSeries = haChart.addSeries(LightweightCharts.LineSeries, { color: 'rgba(76, 175, 80, 0.7)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: 'HA BB하단' });
+                    haBollingerBandsUpperSeries = haChart.addSeries(LightweightCharts.LineSeries, { color: 'rgba(255, 82, 82, 0.7)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: 'HA BB상단', priceFormat: { type: 'price', precision: 4 } });
+                    haBollingerBandsMiddleSeries = haChart.addSeries(LightweightCharts.LineSeries, { color: 'rgba(255, 152, 0, 0.7)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: 'HA BB중단', priceFormat: { type: 'price', precision: 4 } });
+                    haBollingerBandsLowerSeries = haChart.addSeries(LightweightCharts.LineSeries, { color: 'rgba(76, 175, 80, 0.7)', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: 'HA BB하단', priceFormat: { type: 'price', precision: 4 } });
                 }
                 if (!haStochRsiChart) {
                     haStochRsiChart = LightweightCharts.createChart(haStochRsiChartContainer, { width: haStochRsiChartContainer.clientWidth, height: haStochRsiChartContainer.clientHeight, ...commonStochRsiOptions });
@@ -665,13 +697,13 @@
             if (strategySignal.conditions) {
                 if (strategySignal.conditions.long) {
                     updateConditionElement(haCondLongTrendEl, strategySignal.conditions.long.trend);
-                    updateConditionElement(haCondLongDirectionEl, strategySignal.conditions.long.direction);
                     updateConditionElement(haCondLongOscillatorEl, strategySignal.conditions.long.oscillator);
+                    updateConditionElement(haCondLongBollingerEl, strategySignal.conditions.long.bollinger);
                 }
                 if (strategySignal.conditions.short) {
                     updateConditionElement(haCondShortTrendEl, strategySignal.conditions.short.trend);
-                    updateConditionElement(haCondShortDirectionEl, strategySignal.conditions.short.direction);
                     updateConditionElement(haCondShortOscillatorEl, strategySignal.conditions.short.oscillator);
+                    updateConditionElement(haCondShortBollingerEl, strategySignal.conditions.short.bollinger);
                 }
             }
         }
@@ -701,11 +733,11 @@
 
             if (allChartData.regularCandles && allChartData.regularCandles.length > 0) {
                 const lastCandle = allChartData.regularCandles[allChartData.regularCandles.length - 1];
-                currentPriceElement.textContent = parseFloat(lastCandle.close).toFixed(2) + ' USDT';
+                currentPriceElement.textContent = parseFloat(lastCandle.close).toFixed(4) + ' USDT';
             } else { currentPriceElement.textContent = '데이터 없음'; }
             if (allChartData.heikinAshiCandles && allChartData.heikinAshiCandles.length > 0) {
                 const lastHaCandle = allChartData.heikinAshiCandles[allChartData.heikinAshiCandles.length - 1];
-                haCurrentPriceElement.textContent = parseFloat(lastHaCandle.close).toFixed(2) + ' USDT';
+                haCurrentPriceElement.textContent = parseFloat(lastHaCandle.close).toFixed(4) + ' USDT';
             } else { haCurrentPriceElement.textContent = '데이터 없음'; }
 
             if (allChartData.strategySignal) {
@@ -725,7 +757,7 @@
                 return;
             }
 
-            const symbol = tradeSymbolInput.value.toUpperCase() || 'BTCUSDT';
+            const symbol = tradeSymbolInput.value.toUpperCase() || 'XRPUSDT';
             const limit = parseInt(tradeLimitInput.value) || 50;
 
             tradeHistoryStatusEl.textContent = `${symbol} 거래 내역 로딩 중...`;

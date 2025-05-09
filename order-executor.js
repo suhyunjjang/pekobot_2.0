@@ -8,7 +8,7 @@ const ORDER_EXECUTOR_PORT = 5000; // 주문 실행기가 리슨할 포트
 const CAPITAL_PERCENTAGE_FOR_TRADE = 0.50;
 const LEVERAGE = 10;
 const ROI_TP_PERCENTAGE = 0.08;
-const ROI_SL_PERCENTAGE = 0.20;
+const ROI_SL_PERCENTAGE = 0.05;
 
 // Ping/Pong 관련: 클라이언트(server.js)가 Ping을 보내고, 여기서는 Pong으로 응답.
 // 클라이언트가 일정 시간 Ping을 안보내면 연결이 끊겼다고 간주 가능.

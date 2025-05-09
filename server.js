@@ -169,8 +169,8 @@ app.get('/api/historical-klines', async (req, res) => {
   uiIo.emit('server-log', { type: 'info', source: '/api/historical-klines', message: logMessageStart });
 
   try {
-    const symbol = 'BTCUSDT';
-    const interval = '4h';
+    const symbol = 'XRPUSDT';
+    const interval = '1h';
     const limit = MAX_RECENT_CANDLES;
 
     const logFetch = `Fetching historical klines: ${symbol}, ${interval}, limit ${limit}`;
@@ -352,6 +352,7 @@ app.get('/api/trade-history', async (req, res) => {
             .sort((a, b) => b.time - a.time) 
             .map(trade => {
                 const isBTC = trade.symbol.includes('BTC');
+                const isXRP = trade.symbol === 'XRPUSDT'; // XRP 여부 확인 변수 추가
                 const pnl = parseFloat(trade.realizedPnl);
                 const commissionNum = parseFloat(trade.commission);
 
@@ -359,8 +360,9 @@ app.get('/api/trade-history', async (req, res) => {
                     time: new Date(trade.time).toLocaleString('ko-KR', { hour12: false }),
                     symbol: trade.symbol,
                     side: trade.side,
-                    price: parseFloat(trade.price).toFixed(isBTC && !trade.symbol.startsWith('WBTC') ? 2 : 4),
-                    quantity: parseFloat(trade.qty).toFixed(isBTC && !trade.symbol.startsWith('WBTC') ? 4 : 2),
+                    // XRP일 경우 가격과 수량을 4자리로, BTC일 경우 가격 2자리/수량 4자리, 그 외 4자리로 포맷팅
+                    price: parseFloat(trade.price).toFixed(isXRP ? 4 : (isBTC && !trade.symbol.startsWith('WBTC') ? 2 : 4)), 
+                    quantity: parseFloat(trade.qty).toFixed(isXRP ? 4 : (isBTC && !trade.symbol.startsWith('WBTC') ? 4 : 2)),
                     quoteQty: parseFloat(trade.quoteQty).toFixed(2),
                     commission: `${commissionNum.toFixed(8)} ${trade.commissionAsset}`,
                     realizedPnl: pnl.toFixed(2),
@@ -388,7 +390,7 @@ app.get('/api/trade-history', async (req, res) => {
 
 // 바이낸스 웹소켓 연결 (비트코인 선물)
 const WebSocket = require('ws');
-const binanceWs = new WebSocket('wss://fstream.binance.com/ws/btcusdt@kline_4h');
+const binanceWs = new WebSocket('wss://fstream.binance.com/ws/xrpusdt@kline_1h');
 
 // 클라이언트 연결시 이벤트
 uiIo.on('connection', (socket) => { // 웹 UI 클라이언트용 연결
@@ -459,21 +461,29 @@ function processAndEmitFullChartData() {
     const latestOriginalCandle = currentCandles.length > 0 ? currentCandles[currentCandles.length - 1] : {}; // 원본 캔들에서 심볼 가져오기 위함
     const latestHaEMA = heikinAshiEMA.length > 0 ? heikinAshiEMA[heikinAshiEMA.length - 1] : null;
     const latestHaStochKLine = heikinAshiStochRSI.kLine;
+    const latestHaStochDLine = heikinAshiStochRSI.dLine; // D선 데이터 가져오기
 
-    if (latestHaCandle && latestHaEMA && latestHaStochKLine.length >= 2) {
+    // 최신 하이킨아시 볼린저 밴드 값 가져오기
+    const latestHaUpperBand = heikinAshiBollingerBands && heikinAshiBollingerBands.upper.length > 0 ? heikinAshiBollingerBands.upper[heikinAshiBollingerBands.upper.length - 1] : null;
+    const latestHaLowerBand = heikinAshiBollingerBands && heikinAshiBollingerBands.lower.length > 0 ? heikinAshiBollingerBands.lower[heikinAshiBollingerBands.lower.length - 1] : null;
+
+    if (latestHaCandle && latestHaEMA && latestHaStochKLine.length >= 1 && latestHaStochDLine.length >= 1 && latestHaUpperBand && latestHaLowerBand) { // K선, D선 길이 조건 수정 (현재 값만 필요)
         const currentHaStochK = latestHaStochKLine[latestHaStochKLine.length - 1].value;
-        const prevHaStochK = latestHaStochKLine[latestHaStochKLine.length - 2].value;
+        const currentHaStochD = latestHaStochDLine[latestHaStochDLine.length - 1].value; // 현재 D선 값
+        // const prevHaStochK = latestHaStochKLine.length >= 2 ? latestHaStochKLine[latestHaStochKLine.length - 2].value : null; // 이전 K값은 더 이상 필요 없음
         strategySignal.timestamp = latestHaCandle.time;
 
         // 조건 평가
-        const directionConditionLong = latestHaCandle.close > latestHaCandle.open;
-        const oscillatorConditionLong = prevHaStochK <= 20 && currentHaStochK > 20;
+        // const directionConditionLong = latestHaCandle.close > latestHaCandle.open; // 방향 조건 제외
+        const oscillatorConditionLong = currentHaStochK <= 20 && currentHaStochD <= 20; // 수정된 매수 조건
+        const bollingerLowerTouchLong = latestHaCandle.close <= latestHaLowerBand.value; // 볼린저 하단 터치 조건
 
-        const directionConditionShort = latestHaCandle.close < latestHaCandle.open;
-        const oscillatorConditionShort = prevHaStochK >= 80 && currentHaStochK < 80;
+        // const directionConditionShort = latestHaCandle.close < latestHaCandle.open; // 방향 조건 제외
+        const oscillatorConditionShort = currentHaStochK >= 80 && currentHaStochD >= 80; // 수정된 매도 조건
+        const bollingerUpperTouchShort = latestHaCandle.close >= latestHaUpperBand.value; // 볼린저 상단 터치 조건
 
         if (currentPosition === 'NONE') { // 현재 포지션이 없을 때만 진입 신호 확인
-            if (directionConditionLong && oscillatorConditionLong) {
+            if (/*directionConditionLong &&*/ oscillatorConditionLong && bollingerLowerTouchLong) { // 방향 조건 제외
                 strategySignal.signal = 'LONG_ENTRY';
                 const signalTime = new Date(latestHaCandle.time * 1000).toLocaleString('ko-KR');
                 const currentSymbol = latestOriginalCandle.symbol || 'BTCUSDT'; // recentCandles에서 전달된 심볼 사용
@@ -499,7 +509,7 @@ function processAndEmitFullChartData() {
                     uiIo.emit('server-log', {type: 'warning', source: 'StrategyLogic', message: `Cannot send BUY signal: Executor not connected.`, details: tradeSignalData});
                 }
 
-            } else if (directionConditionShort && oscillatorConditionShort) {
+            } else if (/*directionConditionShort &&*/ oscillatorConditionShort && bollingerUpperTouchShort) { // 방향 조건 제외
                 strategySignal.signal = 'SHORT_ENTRY';
                 const signalTime = new Date(latestHaCandle.time * 1000).toLocaleString('ko-KR');
                 const currentSymbol = latestOriginalCandle.symbol || 'BTCUSDT'; // recentCandles에서 전달된 심볼 사용
@@ -530,8 +540,8 @@ function processAndEmitFullChartData() {
         // 예: if (currentPosition === 'LONG' && 반대신호_또는_청산조건) { currentPosition = 'NONE'; strategySignal.signal = 'LONG_EXIT'; }
 
         strategySignal.conditions = {
-            long: { direction: directionConditionLong, oscillator: oscillatorConditionLong },
-            short: { direction: directionConditionShort, oscillator: oscillatorConditionShort }
+            long: { /*direction: directionConditionLong,*/ oscillator: oscillatorConditionLong, bollinger: bollingerLowerTouchLong }, // 방향 조건 상태 제외
+            short: { /*direction: directionConditionShort,*/ oscillator: oscillatorConditionShort, bollinger: bollingerUpperTouchShort } // 방향 조건 상태 제외
         };
     }
     // --- 매매 전략 평가 끝 ---
