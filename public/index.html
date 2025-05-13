@@ -332,21 +332,19 @@
             <p>총 평가액 (USDT): <span id="balance-total-usdt">로딩 중...</span></p>
         </div>
         <div class="strategy-status info-card">
-            <h4>매매 신호 (HA 기준)</h4>
+            <h4>매매 신호 (일반 캔들 기준)</h4>
             <p>포지션: <span id="ha-current-position">-</span></p>
             <p>최근 신호: <strong id="ha-signal-type" class="signal-none">-</strong></p>
             <p>신호 시간: <span id="ha-signal-time">-</span></p>
             <ul>
                 <li>매수 조건:</li>
-                <li>&nbsp;&nbsp;추세 (HA종가 &gt; EMA200): <span id="ha-cond-long-trend">-</span></li>
                 <li>&nbsp;&nbsp;StochRSI (K&D ≤ 20): <span id="ha-cond-long-oscillator">-</span></li>
-                <li>&nbsp;&nbsp;볼린저하단 (HA종가 &lt;= BB하단): <span id="ha-cond-long-bollinger">-</span></li> 
+                <li>&nbsp;&nbsp;볼린저하단 (종가 ≤ BB하단): <span id="ha-cond-long-bollinger">-</span></li>
             </ul>
             <ul>
                 <li>매도 조건:</li>
-                <li>&nbsp;&nbsp;추세 (HA종가 &lt; EMA200): <span id="ha-cond-short-trend">-</span></li>
                 <li>&nbsp;&nbsp;StochRSI (K&D ≥ 80): <span id="ha-cond-short-oscillator">-</span></li>
-                <li>&nbsp;&nbsp;볼린저상단 (HA종가 &gt;= BB상단): <span id="ha-cond-short-bollinger">-</span></li> 
+                <li>&nbsp;&nbsp;볼린저상단 (종가 ≥ BB상단): <span id="ha-cond-short-bollinger">-</span></li>
             </ul>
         </div>
         <div class="trade-history info-card">
@@ -409,10 +407,8 @@
         const haCurrentPositionEl = document.getElementById('ha-current-position');
         const haSignalTypeEl = document.getElementById('ha-signal-type');
         const haSignalTimeEl = document.getElementById('ha-signal-time');
-        const haCondLongTrendEl = document.getElementById('ha-cond-long-trend');
         const haCondLongOscillatorEl = document.getElementById('ha-cond-long-oscillator');
         const haCondLongBollingerEl = document.getElementById('ha-cond-long-bollinger');
-        const haCondShortTrendEl = document.getElementById('ha-cond-short-trend');
         const haCondShortOscillatorEl = document.getElementById('ha-cond-short-oscillator');
         const haCondShortBollingerEl = document.getElementById('ha-cond-short-bollinger');
 
@@ -696,12 +692,10 @@
             
             if (strategySignal.conditions) {
                 if (strategySignal.conditions.long) {
-                    updateConditionElement(haCondLongTrendEl, strategySignal.conditions.long.trend);
                     updateConditionElement(haCondLongOscillatorEl, strategySignal.conditions.long.oscillator);
                     updateConditionElement(haCondLongBollingerEl, strategySignal.conditions.long.bollinger);
                 }
                 if (strategySignal.conditions.short) {
-                    updateConditionElement(haCondShortTrendEl, strategySignal.conditions.short.trend);
                     updateConditionElement(haCondShortOscillatorEl, strategySignal.conditions.short.oscillator);
                     updateConditionElement(haCondShortBollingerEl, strategySignal.conditions.short.bollinger);
                 }

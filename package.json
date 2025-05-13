@@ -1,10 +1,14 @@
 {
   "name": "pekobot_2.0",
   "version": "1.0.0",
-  "main": "server.js",
+  "main": "src/pc/server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "nodemon server.js",
+    "start": "node src/pc/server.js",
+    "dev": "nodemon src/pc/server.js",
+    "pc": "node src/pc/server.js",
+    "vps": "node src/vps/orderExecutor.js",
+    "pc-dev": "nodemon src/pc/server.js",
+    "vps-dev": "nodemon src/vps/orderExecutor.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
